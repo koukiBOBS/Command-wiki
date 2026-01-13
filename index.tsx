@@ -56,9 +56,26 @@ const VERSION_MAP: Record<Edition, { label: string; value: string }[]> = {
     { label: '1.18.11', value: 'bedrock/1.18.11' },
     { label: '1.17.10', value: 'bedrock/1.17.10' },
   ],
-  Education: [{ label: '最新', value: 'bedrock/1.19.80' }],
+  Education: [{ label: '最新 (1.20+)', value: 'bedrock/1.21.0' }],
   NetEase: [{ label: '1.12.2 (PC)', value: 'pc/1.12.2' }],
 };
+
+const CATEGORY_FILE_MAP: Record<string, string> = {
+  '物品与方块': 'items.json',
+  '实体': 'entities.json',
+  '状态效果': 'effects.json',
+  '生物群系': 'biomes.json',
+};
+
+// 本地核心兜底数据 (Fallback)
+const CORE_FALLBACK_IDS: IDEntry[] = [
+  { id: 'diamond', name: '钻石', category: '物品与方块' },
+  { id: 'grass_block', name: '草方块', category: '物品与方块' },
+  { id: 'zombie', name: '僵尸', category: '实体' },
+  { id: 'creeper', name: '苦力怕', category: '实体' },
+  { id: 'speed', name: '速度', category: '状态效果' },
+  { id: 'plains', name: '平原', category: '生物群系' },
+];
 
 const COMMAND_DATABASE: MinecraftCommand[] = [
   // --- 基础指令 ---
@@ -108,7 +125,7 @@ const App = () => {
   const [edition, setEdition] = useState<Edition>('Java');
   const [viewMode, setViewMode] = useState<ViewMode>('standard');
   const [selectedCategory, setSelectedCategory] = useState<Category>('全部');
-  const [selectedIDCategory, setSelectedIDCategory] = useState<IDCategory>('全部');
+  const [selectedIDCategory, setSelectedIDCategory] = useState<IDCategory>('物品与方块');
   const [selectedVersion, setSelectedVersion] = useState(VERSION_MAP['Java'][0].value);
   const [search, setSearch] = useState('');
   const [aiInput, setAiInput] = useState('');
@@ -116,8 +133,9 @@ const App = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   
   // Dynamic ID State
-  const [dynamicIDs, setDynamicIDs] = useState<IDEntry[]>([]);
+  const [dynamicIDs, setDynamicIDs] = useState<IDEntry[]>(CORE_FALLBACK_IDS);
   const [isLoadingIDs, setIsLoadingIDs] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [showHistory, setShowHistory] = useState(false);
@@ -134,37 +152,45 @@ const App = () => {
     localStorage.setItem('mc_command_search_history', JSON.stringify(searchHistory));
   }, [searchHistory]);
 
-  // Fetch IDs whenever version changes
+  // Fetch IDs whenever version or category changes
   useEffect(() => {
     if (activeView === 'ids') {
-      fetchMinecraftData(selectedVersion);
+      fetchMinecraftData(selectedVersion, selectedIDCategory);
     }
-  }, [selectedVersion, activeView]);
+  }, [selectedVersion, activeView, selectedIDCategory]);
 
   // Sync version when edition changes
   useEffect(() => {
     const defaultVersion = VERSION_MAP[edition][0].value;
     setSelectedVersion(defaultVersion);
+    setFetchError(null);
   }, [edition]);
 
-  const fetchMinecraftData = async (versionPath: string) => {
+  const fetchMinecraftData = async (versionPath: string, idCategory: IDCategory) => {
+    const fileName = CATEGORY_FILE_MAP[idCategory] || 'items.json';
+    const targetUrl = `https://raw.githubusercontent.com/PrismarineJS/minecraft-data/master/data/${versionPath}/${fileName}`;
+    
     setIsLoadingIDs(true);
+    setFetchError(null);
+    
     try {
-      const response = await fetch(`https://raw.githubusercontent.com/PrismarineJS/minecraft-data/master/data/${versionPath}/items.json`);
-      if (!response.ok) throw new Error('Network response was not ok');
+      const response = await fetch(targetUrl);
+      if (!response.ok) throw new Error(`无法获取 ${idCategory} 数据 (${response.status})`);
       const data = await response.json();
       
       const mappedData: IDEntry[] = data.map((item: any) => ({
         id: item.name,
         name: item.displayName || item.name,
-        category: '物品与方块',
+        category: idCategory === '全部' ? '物品与方块' : idCategory as any,
         namespace: 'minecraft'
       }));
       
       setDynamicIDs(mappedData);
-    } catch (error) {
-      console.error('Failed to fetch items:', error);
-      setDynamicIDs([]); // Fallback to empty if fetch fails
+    } catch (error: any) {
+      console.error('Fetch Failed:', error);
+      setFetchError(error.message);
+      // 加载失败时使用核心兜底数据并过滤分类
+      setDynamicIDs(CORE_FALLBACK_IDS);
     } finally {
       setIsLoadingIDs(false);
     }
@@ -202,7 +228,8 @@ const App = () => {
   }, [search, edition, viewMode, selectedCategory]);
 
   const filteredIDs = useMemo(() => {
-    return dynamicIDs.filter(item => {
+    const baseList = dynamicIDs.length > 0 ? dynamicIDs : CORE_FALLBACK_IDS;
+    return baseList.filter(item => {
       const matchesSearch = item.id.toLowerCase().includes(search.toLowerCase()) || 
                            item.name.toLowerCase().includes(search.toLowerCase());
       const matchesCategory = selectedIDCategory === '全部' || item.category === selectedIDCategory;
@@ -239,7 +266,7 @@ const App = () => {
   };
 
   const categories: Category[] = ['全部', '基础', '作弊', '管理', '技术'];
-  const idCategories: IDCategory[] = ['全部', '物品与方块', '实体', '状态效果', '结构', '生物群系'];
+  const idCategories: IDCategory[] = ['物品与方块', '实体', '状态效果', '生物群系'];
 
   return (
     <div className="min-h-screen p-4 md:p-8">
@@ -271,18 +298,34 @@ const App = () => {
             </div>
 
             {activeView === 'ids' && (
-              <div className="mb-6">
-                <label className="text-xs text-gray-400 block mb-2 uppercase font-bold tracking-widest">选择游戏版本</label>
-                <select 
-                  value={selectedVersion} 
-                  onChange={(e) => setSelectedVersion(e.target.value)}
-                  className="w-full bg-black border-2 border-gray-600 p-2 text-white text-sm outline-none focus:border-blue-500"
-                >
-                  {VERSION_MAP[edition].map(v => (
-                    <option key={v.value} value={v.value}>{v.label}</option>
-                  ))}
-                </select>
-              </div>
+              <>
+                <div className="mb-6">
+                  <label className="text-xs text-gray-400 block mb-2 uppercase font-bold tracking-widest">选择游戏版本</label>
+                  <select 
+                    value={selectedVersion} 
+                    onChange={(e) => setSelectedVersion(e.target.value)}
+                    className="w-full bg-black border-2 border-gray-600 p-2 text-white text-sm outline-none focus:border-blue-500 rounded"
+                  >
+                    {VERSION_MAP[edition].map(v => (
+                      <option key={v.value} value={v.value}>{v.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="mb-6">
+                  <label className="text-xs text-gray-400 block mb-2 uppercase font-bold tracking-widest">分类切换</label>
+                  <div className="flex flex-col gap-1">
+                    {idCategories.map(cat => (
+                      <button 
+                        key={cat} 
+                        onClick={() => setSelectedIDCategory(cat)} 
+                        className={`text-left px-3 py-2 text-sm rounded transition-all ${selectedIDCategory === cat ? 'bg-blue-800 text-white' : 'text-gray-400 hover:bg-white/5'}`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
             )}
 
             {activeView === 'wiki' && (
@@ -300,7 +343,7 @@ const App = () => {
           <section className="mc-panel p-4 relative" ref={historyRef}>
             <h3 className="mc-font text-xl text-green-400 mb-4">快速过滤</h3>
             <div className="relative">
-              <input type="text" placeholder="键入搜索关键词..." className="w-full bg-black border-2 border-gray-600 p-2 text-white text-sm focus:border-green-500 outline-none" value={search} onFocus={() => setShowHistory(true)} onKeyDown={(e) => { if (e.key === 'Enter') { addToHistory(search); setShowHistory(false); } }} onChange={(e) => { setSearch(e.target.value); setShowHistory(true); }} />
+              <input type="text" placeholder="键入关键词..." className="w-full bg-black border-2 border-gray-600 p-2 text-white text-sm focus:border-green-500 outline-none" value={search} onFocus={() => setShowHistory(true)} onKeyDown={(e) => { if (e.key === 'Enter') { addToHistory(search); setShowHistory(false); } }} onChange={(e) => { setSearch(e.target.value); setShowHistory(true); }} />
               {showHistory && historySuggestions.length > 0 && (
                 <div className="absolute top-full left-0 right-0 bg-[#313131] border-2 border-black z-50 shadow-2xl mt-1">
                   <div className="flex justify-between items-center p-2 border-b border-black bg-black/20"><span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">历史记录</span><button onClick={() => setSearchHistory([])} className="text-[10px] text-red-400 hover:text-red-300">清空</button></div>
@@ -325,7 +368,7 @@ const App = () => {
         <main className="lg:col-span-3 space-y-4">
           {activeView === 'wiki' ? (
             <div className="grid grid-cols-1 gap-4">
-              {filteredCommands.map(cmd => {
+              {filteredCommands.length > 0 ? filteredCommands.map(cmd => {
                 const details = cmd.details[edition]!;
                 return (
                   <div key={cmd.name} className={`command-card p-5 rounded-lg shadow-xl border-l-8 ${viewMode === 'history' ? 'border-l-red-800' : 'border-l-green-700'}`}>
@@ -342,20 +385,24 @@ const App = () => {
                     </div>
                   </div>
                 );
-              })}
+              }) : <div className="mc-panel p-16 text-center text-gray-500 bg-black/20 border-dashed">未找到匹配指令</div>}
             </div>
           ) : (
             <>
               <div className="mc-panel p-4 mb-4 bg-blue-900/20 border-blue-500/50 flex justify-between items-center">
                 <div>
-                  <h2 className="text-xl mc-font text-blue-400 mb-1">物品与方块 ID 库</h2>
-                  <p className="text-xs text-gray-400">正在显示来自 <span className="text-white">PrismarineJS</span> 的官方数据 • 命名空间: <code className="text-[10px]">minecraft:</code></p>
+                  <h2 className="text-xl mc-font text-blue-400 mb-1">{selectedIDCategory} ID 库</h2>
+                  {fetchError ? (
+                    <p className="text-xs text-red-400">⚠️ {fetchError} (当前显示本地数据)</p>
+                  ) : (
+                    <p className="text-xs text-gray-400">正在显示来自 <span className="text-white">PrismarineJS</span> 的数据 • 命名空间: <code className="text-[10px]">minecraft:</code></p>
+                  )}
                 </div>
                 {isLoadingIDs && <div className="animate-spin h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full"></div>}
               </div>
               
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {filteredIDs.length > 0 ? filteredIDs.slice(0, 300).map((item, idx) => (
+                {filteredIDs.length > 0 ? filteredIDs.slice(0, 450).map((item, idx) => (
                   <div key={idx} className="command-card p-3 rounded flex flex-col justify-between border-l-4 border-l-blue-500 hover:bg-white/5 transition-all group">
                     <div>
                       <h4 className="text-white font-bold text-sm mb-1 group-hover:text-blue-400">{item.name}</h4>
@@ -369,9 +416,9 @@ const App = () => {
                     </button>
                   </div>
                 )) : (
-                  !isLoadingIDs && <div className="col-span-full mc-panel p-16 text-center text-gray-500">此版本暂无物品数据</div>
+                  !isLoadingIDs && <div className="col-span-full mc-panel p-16 text-center text-gray-500">此版本或分类暂无 ID 数据</div>
                 )}
-                {filteredIDs.length > 300 && <div className="col-span-full p-4 text-center text-gray-500 text-xs">... 还有 {filteredIDs.length - 300} 个项，请通过搜索精确查找</div>}
+                {filteredIDs.length > 450 && <div className="col-span-full p-4 text-center text-gray-500 text-xs">... 还有 {filteredIDs.length - 450} 个结果，请通过搜索精确查找</div>}
               </div>
             </>
           )}
@@ -380,7 +427,7 @@ const App = () => {
 
       <footer className="max-w-6xl mx-auto mt-16 pt-8 border-t border-gray-800 text-center text-gray-500 text-sm pb-8">
         <p className="mc-font text-lg text-gray-400">Minecraft Command & Data Master</p>
-        <p className="mt-1">数据由 PrismarineJS 提供 • 支持版本切换</p>
+        <p className="mt-1">数据源: PrismarineJS / minecraft-data • 社区共建</p>
       </footer>
     </div>
   );
