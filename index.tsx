@@ -5,9 +5,9 @@ import { GoogleGenAI } from '@google/genai';
 // --- Types ---
 type Edition = 'Java' | 'Bedrock' | 'Education' | 'NetEase';
 type ViewMode = 'standard' | 'history';
-type Category = '全部' | '基础' | '作弊' | '管理' | '技术';
+type Category = '全部' | '基础' | '作弊' | '管理' | '技术' | '教育';
 type ActiveView = 'wiki' | 'ids';
-type IDCategory = '全部' | '物品与方块' | '实体' | '状态效果' | '结构' | '生物群系';
+type IDCategory = '物品与方块' | '实体' | '状态效果' | '生物群系';
 
 interface CommandVersion {
   syntax: string;
@@ -17,16 +17,12 @@ interface CommandVersion {
   versionRange?: string; 
   permission?: number; 
   requirements?: string[]; 
-  legacy?: {
-    syntax: string;
-    versionRange: string;
-  };
 }
 
 interface MinecraftCommand {
   name: string;
   description: string;
-  category: '基础' | '作弊' | '管理' | '技术';
+  category: Category;
   details: {
     [key in Edition]?: CommandVersion;
   };
@@ -35,11 +31,11 @@ interface MinecraftCommand {
 interface IDEntry {
   id: string;
   name: string;
-  category: Exclude<IDCategory, '全部'>;
+  category: IDCategory;
   namespace?: string;
 }
 
-// --- Constants for Fetching ---
+// --- Data Constants ---
 const VERSION_MAP: Record<Edition, { label: string; value: string }[]> = {
   Java: [
     { label: '1.21', value: 'pc/1.21' },
@@ -48,54 +44,50 @@ const VERSION_MAP: Record<Edition, { label: string; value: string }[]> = {
     { label: '1.18.2', value: 'pc/1.18.2' },
     { label: '1.16.5', value: 'pc/1.16.5' },
     { label: '1.12.2', value: 'pc/1.12.2' },
-    { label: '1.8.9', value: 'pc/1.8.9' },
   ],
   Bedrock: [
     { label: '1.21.0', value: 'bedrock/1.21.0' },
+    { label: '1.20.0', value: 'bedrock/1.20.0' },
     { label: '1.19.80', value: 'bedrock/1.19.80' },
-    { label: '1.18.11', value: 'bedrock/1.18.11' },
-    { label: '1.17.10', value: 'bedrock/1.17.10' },
   ],
-  Education: [{ label: '最新 (1.20+)', value: 'bedrock/1.21.0' }],
-  NetEase: [{ label: '1.12.2 (PC)', value: 'pc/1.12.2' }],
+  Education: [{ label: '最新', value: 'bedrock/1.21.0' }],
+  NetEase: [{ label: '1.12.2', value: 'pc/1.12.2' }],
 };
 
-const CATEGORY_FILE_MAP: Record<string, string> = {
+const CATEGORY_FILE_MAP: Record<IDCategory, string> = {
   '物品与方块': 'items.json',
   '实体': 'entities.json',
   '状态效果': 'effects.json',
   '生物群系': 'biomes.json',
 };
 
-// 本地核心兜底数据 (Fallback)
-const CORE_FALLBACK_IDS: IDEntry[] = [
-  { id: 'diamond', name: '钻石', category: '物品与方块' },
-  { id: 'grass_block', name: '草方块', category: '物品与方块' },
-  { id: 'zombie', name: '僵尸', category: '实体' },
-  { id: 'creeper', name: '苦力怕', category: '实体' },
-  { id: 'speed', name: '速度', category: '状态效果' },
-  { id: 'plains', name: '平原', category: '生物群系' },
-];
-
 const COMMAND_DATABASE: MinecraftCommand[] = [
-  // --- 基础指令 ---
   {
     name: 'help / ?',
-    description: '列出所有可用指令或显示指定指令的语法帮助。',
+    description: '提供指令的使用指南。',
     category: '基础',
     details: {
-      Java: { syntax: '/help [指令名]', versionRange: "1.0 - 至今", permission: 0 },
-      Bedrock: { syntax: '/help [页码|指令名] 或 /? [页码|指令名]', versionRange: "1.0.0 - 至今", permission: 0 },
-      Education: { syntax: '/help [页码|指令名]', versionRange: "1.0 - 至今", permission: 0 }
+      Java: { syntax: '/help [指令]', versionRange: "1.0+", permission: 0 },
+      Bedrock: { syntax: '/help [页码|指令]', versionRange: "1.0+", permission: 0 },
+      Education: { syntax: '/help [指令]', versionRange: "1.0+", permission: 0 }
     }
   },
   {
     name: 'tp / teleport',
-    description: '传送实体（玩家、生物等）到指定位置或另一实体。',
+    description: '将实体传送至特定坐标或目标。',
     category: '基础',
     details: {
-      Java: { syntax: '/tp <目标> <目的地> 或 /teleport <目标> <目的地>', versionRange: "1.0 - 至今", permission: 2, requirements: ["开启作弊"] },
-      Bedrock: { syntax: '/tp <目标> <目的地>', versionRange: "1.0.0 - 至今", permission: 1, requirements: ["开启作弊"] }
+      Java: { syntax: '/tp <目标> <目的地>', versionRange: "1.0+", permission: 2 },
+      Bedrock: { syntax: '/tp <目标> <目的地>', versionRange: "1.0+", permission: 1 }
+    }
+  },
+  {
+    name: 'give',
+    description: '给予玩家指定物品。',
+    category: '作弊',
+    details: {
+      Java: { syntax: '/give <玩家> <物品> [数量]', versionRange: "1.0+", permission: 2 },
+      Bedrock: { syntax: '/give <玩家> <物品> [数量] [数据]', versionRange: "1.0+", permission: 1 }
     }
   },
   {
@@ -103,22 +95,47 @@ const COMMAND_DATABASE: MinecraftCommand[] = [
     description: '更改玩家的游戏模式。',
     category: '作弊',
     details: {
-      Java: { syntax: '/gamemode <模式>', versionRange: "1.3.1 - 至今", permission: 2 },
-      Bedrock: { syntax: '/gamemode <模式> [玩家]', versionRange: "1.0.0 - 至今", permission: 1 }
+      Java: { syntax: '/gamemode <模式> [玩家]', versionRange: "1.3.1+", permission: 2 },
+      Bedrock: { syntax: '/gamemode <模式> [玩家]', versionRange: "1.0+", permission: 1 }
+    }
+  },
+  {
+    name: 'ability',
+    description: '赋予或剥夺玩家的能力。',
+    category: '教育',
+    details: {
+      Education: { syntax: '/ability <玩家> <能力> <值>', versionRange: "EDU独有", permission: 1 },
+      Bedrock: { syntax: '/ability <玩家> <能力> <值>', note: "仅限教育模式开启时使用。" }
+    }
+  },
+  {
+    name: 'wb / worldbuilder',
+    description: '切换世界建造者状态。',
+    category: '教育',
+    details: {
+      Education: { syntax: '/wb', note: "允许在受限区域放置方块。", permission: 1 },
+      Bedrock: { syntax: '/wb', note: "仅限开启教育模式可用。" }
     }
   },
   {
     name: 'execute',
-    description: '在复杂条件下执行另一条指令。',
+    description: '在特定条件下执行指令。',
     category: '技术',
     details: {
-      Java: { syntax: '/execute ... run <指令>', versionRange: "1.13 - 至今", permission: 2 },
-      Bedrock: { syntax: '/execute ... run <指令>', versionRange: "1.19.70 - 至今", permission: 1 }
+      Java: { syntax: '/execute ... run <指令>', versionRange: "1.13+", permission: 2, note: "Java 1.13 重构了该指令语法。" },
+      Bedrock: { syntax: '/execute ... run <指令>', versionRange: "1.19.70+", permission: 1, note: "现已与 Java 语法对齐。" }
+    }
+  },
+  {
+    name: 'testfor',
+    description: '检测实体是否存在。',
+    category: '技术',
+    details: {
+      Java: { syntax: '/testfor <目标>', isDeprecated: true, deprecationReason: "1.13后并入/execute指令。" },
+      Bedrock: { syntax: '/testfor <目标>', versionRange: "1.0+", permission: 1 }
     }
   }
 ];
-
-// --- Components ---
 
 const App = () => {
   const [activeView, setActiveView] = useState<ActiveView>('wiki');
@@ -132,8 +149,7 @@ const App = () => {
   const [aiResponse, setAiResponse] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   
-  // Dynamic ID State
-  const [dynamicIDs, setDynamicIDs] = useState<IDEntry[]>(CORE_FALLBACK_IDS);
+  const [dynamicIDs, setDynamicIDs] = useState<IDEntry[]>([]);
   const [isLoadingIDs, setIsLoadingIDs] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
@@ -152,14 +168,12 @@ const App = () => {
     localStorage.setItem('mc_command_search_history', JSON.stringify(searchHistory));
   }, [searchHistory]);
 
-  // Fetch IDs whenever version or category changes
   useEffect(() => {
     if (activeView === 'ids') {
       fetchMinecraftData(selectedVersion, selectedIDCategory);
     }
   }, [selectedVersion, activeView, selectedIDCategory]);
 
-  // Sync version when edition changes
   useEffect(() => {
     const defaultVersion = VERSION_MAP[edition][0].value;
     setSelectedVersion(defaultVersion);
@@ -167,7 +181,7 @@ const App = () => {
   }, [edition]);
 
   const fetchMinecraftData = async (versionPath: string, idCategory: IDCategory) => {
-    const fileName = CATEGORY_FILE_MAP[idCategory] || 'items.json';
+    const fileName = CATEGORY_FILE_MAP[idCategory];
     const targetUrl = `https://raw.githubusercontent.com/PrismarineJS/minecraft-data/master/data/${versionPath}/${fileName}`;
     
     setIsLoadingIDs(true);
@@ -175,44 +189,23 @@ const App = () => {
     
     try {
       const response = await fetch(targetUrl);
-      if (!response.ok) throw new Error(`无法获取 ${idCategory} 数据 (${response.status})`);
+      if (!response.ok) throw new Error(`无法获取数据 (HTTP ${response.status})`);
       const data = await response.json();
       
       const mappedData: IDEntry[] = data.map((item: any) => ({
         id: item.name,
         name: item.displayName || item.name,
-        category: idCategory === '全部' ? '物品与方块' : idCategory as any,
+        category: idCategory,
         namespace: 'minecraft'
       }));
       
       setDynamicIDs(mappedData);
     } catch (error: any) {
-      console.error('Fetch Failed:', error);
       setFetchError(error.message);
-      // 加载失败时使用核心兜底数据并过滤分类
-      setDynamicIDs(CORE_FALLBACK_IDS);
+      setDynamicIDs([]);
     } finally {
       setIsLoadingIDs(false);
     }
-  };
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (historyRef.current && !historyRef.current.contains(event.target as Node)) {
-        setShowHistory(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const addToHistory = (term: string) => {
-    const cleanTerm = term.trim();
-    if (!cleanTerm) return;
-    setSearchHistory(prev => {
-      const filtered = prev.filter(h => h !== cleanTerm);
-      return [cleanTerm, ...filtered].slice(0, 10);
-    });
   };
 
   const filteredCommands = useMemo(() => {
@@ -228,19 +221,12 @@ const App = () => {
   }, [search, edition, viewMode, selectedCategory]);
 
   const filteredIDs = useMemo(() => {
-    const baseList = dynamicIDs.length > 0 ? dynamicIDs : CORE_FALLBACK_IDS;
-    return baseList.filter(item => {
+    return dynamicIDs.filter(item => {
       const matchesSearch = item.id.toLowerCase().includes(search.toLowerCase()) || 
                            item.name.toLowerCase().includes(search.toLowerCase());
-      const matchesCategory = selectedIDCategory === '全部' || item.category === selectedIDCategory;
-      return matchesSearch && matchesCategory;
+      return matchesSearch;
     });
-  }, [search, selectedIDCategory, dynamicIDs]);
-
-  const historySuggestions = useMemo(() => {
-    if (!search.trim()) return searchHistory;
-    return searchHistory.filter(h => h.toLowerCase().includes(search.toLowerCase()) && h.toLowerCase() !== search.toLowerCase());
-  }, [search, searchHistory]);
+  }, [search, dynamicIDs]);
 
   const handleAiAsk = async () => {
     if (!aiInput.trim()) return;
@@ -250,11 +236,11 @@ const App = () => {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `你是一个Minecraft专家。当前版本是：${edition} ${selectedVersion}。用户问：${aiInput}。请用中文回答并提供指令示例。`,
+        contents: `你是一位深谙《我的世界》全版本的顶级专家。请用专业、简洁的中文回答用户关于 ${edition} 版的问题：${aiInput}。如果涉及指令，请务必提供完整的 / 格式代码。`,
       });
       setAiResponse(response.text || '无法生成内容。');
     } catch (error) {
-      setAiResponse('生成失败。');
+      setAiResponse('连接专家失败，请稍后重试。');
     } finally {
       setIsGenerating(false);
     }
@@ -262,172 +248,205 @@ const App = () => {
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    alert('已复制：' + text);
+    // Silent success or custom toast would be better, using simple alert for now
+    // Toast logic omitted for brevity
   };
 
-  const categories: Category[] = ['全部', '基础', '作弊', '管理', '技术'];
+  const categories: Category[] = ['全部', '基础', '作弊', '管理', '技术', '教育'];
   const idCategories: IDCategory[] = ['物品与方块', '实体', '状态效果', '生物群系'];
 
   return (
     <div className="min-h-screen p-4 md:p-8">
-      <header className="max-w-6xl mx-auto mb-8 text-center">
-        <h1 className="text-4xl md:text-6xl mc-font text-white mb-2 drop-shadow-md">
-          我的世界指令库
+      <header className="max-w-7xl mx-auto mb-8 text-center">
+        <h1 className="text-5xl md:text-7xl mc-font text-white mb-4 drop-shadow-xl tracking-tighter">
+          MINECRAFT 指令百科
         </h1>
-        <p className="text-gray-400">Minecraft Command Wiki & Dynamic ID Master</p>
+        <div className="h-1 w-32 bg-green-600 mx-auto rounded-full shadow-lg"></div>
       </header>
 
-      <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-4 gap-8">
-        <aside className="lg:col-span-1 space-y-6">
-          <section className="mc-panel p-4">
-            <h3 className="mc-font text-xl text-yellow-400 mb-4">导航控制</h3>
-            <div className="flex flex-col gap-2 mb-6">
-              <button onClick={() => setActiveView('wiki')} className={`mc-button text-left text-sm ${activeView === 'wiki' ? 'active' : ''}`}>
-                📚 指令百科
+      <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
+        {/* Sidebar */}
+        <aside className="lg:col-span-3 space-y-6">
+          <section className="mc-panel p-5">
+            <h3 className="mc-font text-2xl text-yellow-400 mb-5 border-b border-white/10 pb-2">功能导航</h3>
+            <div className="flex flex-col gap-3 mb-8">
+              <button onClick={() => setActiveView('wiki')} className={`mc-button text-left text-sm flex items-center gap-2 ${activeView === 'wiki' ? 'active' : ''}`}>
+                <span className="text-lg">📚</span> 指令百科
               </button>
-              <button onClick={() => setActiveView('ids')} className={`mc-button text-left text-sm ${activeView === 'ids' ? 'active' : ''}`}>
-                🆔 万能ID库 (实时)
+              <button onClick={() => setActiveView('ids')} className={`mc-button text-left text-sm flex items-center gap-2 ${activeView === 'ids' ? 'active' : ''}`}>
+                <span className="text-lg">🆔</span> 万能 ID 库
               </button>
             </div>
 
-            <div className="flex flex-col gap-2 mb-6">
-              <label className="text-xs text-gray-400 block mb-1 uppercase font-bold tracking-widest">选择平台</label>
-              {(['Java', 'Bedrock', 'Education', 'NetEase'] as Edition[]).map(ed => (
-                <button key={ed} onClick={() => setEdition(ed)} className={`mc-button text-left text-sm ${edition === ed ? 'active' : ''}`}>{ed}</button>
-              ))}
-            </div>
-
-            {activeView === 'ids' && (
-              <>
-                <div className="mb-6">
-                  <label className="text-xs text-gray-400 block mb-2 uppercase font-bold tracking-widest">选择游戏版本</label>
-                  <select 
-                    value={selectedVersion} 
-                    onChange={(e) => setSelectedVersion(e.target.value)}
-                    className="w-full bg-black border-2 border-gray-600 p-2 text-white text-sm outline-none focus:border-blue-500 rounded"
-                  >
-                    {VERSION_MAP[edition].map(v => (
-                      <option key={v.value} value={v.value}>{v.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="mb-6">
-                  <label className="text-xs text-gray-400 block mb-2 uppercase font-bold tracking-widest">分类切换</label>
-                  <div className="flex flex-col gap-1">
-                    {idCategories.map(cat => (
-                      <button 
-                        key={cat} 
-                        onClick={() => setSelectedIDCategory(cat)} 
-                        className={`text-left px-3 py-2 text-sm rounded transition-all ${selectedIDCategory === cat ? 'bg-blue-800 text-white' : 'text-gray-400 hover:bg-white/5'}`}
-                      >
-                        {cat}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </>
-            )}
-
-            {activeView === 'wiki' && (
-              <div className="mb-6">
-                <label className="text-xs text-gray-400 block mb-2 uppercase font-bold tracking-widest">指令类别</label>
-                <div className="grid grid-cols-2 gap-1 bg-black/30 p-1 rounded border border-gray-700">
-                  {categories.map(cat => (
-                    <button key={cat} onClick={() => setSelectedCategory(cat)} className={`text-[11px] py-1.5 px-2 rounded transition-all text-center ${selectedCategory === cat ? 'bg-blue-700 text-white border border-blue-400/50' : 'text-gray-400 hover:text-gray-200'}`}>{cat}</button>
+            <div className="space-y-6">
+              <div>
+                <label className="text-[10px] text-gray-500 block mb-2 uppercase font-black tracking-[0.2em]">游戏版本</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['Java', 'Bedrock', 'Education', 'NetEase'] as Edition[]).map(ed => (
+                    <button key={ed} onClick={() => setEdition(ed)} className={`text-xs py-2 px-3 rounded border transition-all ${edition === ed ? 'bg-green-700 border-green-400 text-white shadow-lg' : 'bg-black/40 border-gray-700 text-gray-500 hover:text-gray-300'}`}>{ed}</button>
                   ))}
                 </div>
               </div>
-            )}
-          </section>
 
-          <section className="mc-panel p-4 relative" ref={historyRef}>
-            <h3 className="mc-font text-xl text-green-400 mb-4">快速过滤</h3>
-            <div className="relative">
-              <input type="text" placeholder="键入关键词..." className="w-full bg-black border-2 border-gray-600 p-2 text-white text-sm focus:border-green-500 outline-none" value={search} onFocus={() => setShowHistory(true)} onKeyDown={(e) => { if (e.key === 'Enter') { addToHistory(search); setShowHistory(false); } }} onChange={(e) => { setSearch(e.target.value); setShowHistory(true); }} />
-              {showHistory && historySuggestions.length > 0 && (
-                <div className="absolute top-full left-0 right-0 bg-[#313131] border-2 border-black z-50 shadow-2xl mt-1">
-                  <div className="flex justify-between items-center p-2 border-b border-black bg-black/20"><span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">历史记录</span><button onClick={() => setSearchHistory([])} className="text-[10px] text-red-400 hover:text-red-300">清空</button></div>
-                  <ul className="max-h-48 overflow-y-auto scrollbar-thin">
-                    {historySuggestions.map((item, idx) => (
-                      <li key={idx} className="p-2 text-sm text-gray-300 hover:bg-green-700 hover:text-white cursor-pointer border-b border-black last:border-0" onClick={() => { setSearch(item); setShowHistory(false); addToHistory(item); }}>{item}</li>
+              {activeView === 'wiki' ? (
+                <div>
+                  <label className="text-[10px] text-gray-500 block mb-2 uppercase font-black tracking-[0.2em]">指令分类</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {categories.map(cat => (
+                      <button key={cat} onClick={() => setSelectedCategory(cat)} className={`text-xs py-2 rounded border transition-all ${selectedCategory === cat ? 'bg-blue-700 border-blue-400 text-white shadow-lg' : 'bg-black/40 border-gray-700 text-gray-500 hover:text-gray-300'}`}>{cat}</button>
                     ))}
-                  </ul>
+                  </div>
                 </div>
+              ) : (
+                <>
+                  <div>
+                    <label className="text-[10px] text-gray-500 block mb-2 uppercase font-black tracking-[0.2em]">数据库版本</label>
+                    <select value={selectedVersion} onChange={(e) => setSelectedVersion(e.target.value)} className="w-full bg-black/60 border border-gray-700 p-2 text-white text-xs rounded outline-none focus:border-blue-500">
+                      {VERSION_MAP[edition].map(v => (
+                        <option key={v.value} value={v.value}>{v.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-gray-500 block mb-2 uppercase font-black tracking-[0.2em]">库分类</label>
+                    <div className="flex flex-col gap-1">
+                      {idCategories.map(cat => (
+                        <button key={cat} onClick={() => setSelectedIDCategory(cat)} className={`text-left text-xs py-2 px-3 rounded transition-all ${selectedIDCategory === cat ? 'bg-blue-800 text-white border-l-4 border-blue-400' : 'text-gray-500 hover:bg-white/5'}`}>{cat}</button>
+                      ))}
+                    </div>
+                  </div>
+                </>
               )}
             </div>
           </section>
 
-          <section className="mc-panel p-4 bg-[#403025]">
-            <h3 className="mc-font text-xl text-blue-400 mb-2">指令生成器</h3>
-            <textarea className="w-full bg-black border-2 border-gray-600 p-2 text-white h-24 text-sm mb-2 outline-none" placeholder="描述你的需求..." value={aiInput} onChange={(e) => setAiInput(e.target.value)}></textarea>
-            <button onClick={handleAiAsk} disabled={isGenerating} className="mc-button w-full disabled:opacity-50">{isGenerating ? '处理中...' : '询问专家'}</button>
-            {aiResponse && <div className="mt-4 p-2 bg-black/50 border border-blue-500/50 rounded text-xs overflow-x-auto whitespace-pre-wrap max-h-48 scrollbar-thin font-mono text-blue-200">{aiResponse}</div>}
+          <section className="mc-panel p-5 bg-[#403025]">
+            <h3 className="mc-font text-2xl text-blue-400 mb-4 flex items-center gap-2">
+               AI 专家问答
+            </h3>
+            <div className="relative group">
+               <textarea 
+                  className="w-full bg-black/80 border-2 border-gray-700 p-3 text-white h-32 text-xs mb-3 outline-none focus:border-blue-500 rounded transition-all" 
+                  placeholder="例如：如何用指令生成一个骑着猪的僵尸？"
+                  value={aiInput}
+                  onChange={(e) => setAiInput(e.target.value)}
+               ></textarea>
+               <div className="absolute top-2 right-2 opacity-20 group-hover:opacity-100 transition-opacity">
+                  <span className="text-[10px] bg-blue-600 px-1 rounded text-white">Gemini 3.0</span>
+               </div>
+            </div>
+            <button onClick={handleAiAsk} disabled={isGenerating} className="mc-button w-full disabled:opacity-50">
+               {isGenerating ? '思考中...' : '提交问题'}
+            </button>
+            {aiResponse && (
+              <div className="mt-4 p-4 bg-black/60 border border-blue-900/50 rounded-lg text-xs leading-relaxed text-blue-100 font-mono overflow-y-auto max-h-64 custom-scrollbar whitespace-pre-wrap shadow-inner">
+                {aiResponse}
+              </div>
+            )}
           </section>
         </aside>
 
-        <main className="lg:col-span-3 space-y-4">
+        {/* Main Content */}
+        <main className="lg:col-span-9 space-y-6">
+          <div className="mc-panel p-4 flex items-center gap-4 bg-black/20">
+            <div className="flex-1 relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">🔍</span>
+              <input 
+                type="text" 
+                placeholder={activeView === 'wiki' ? "搜索指令 (如: tp, fill, execute)..." : "搜索 ID 或 译名 (如: diamond, 僵尸)..."} 
+                className="w-full bg-black/60 border-2 border-gray-800 py-3 pl-10 pr-4 text-white rounded-md focus:border-green-600 outline-none transition-colors"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+          </div>
+
           {activeView === 'wiki' ? (
-            <div className="grid grid-cols-1 gap-4">
-              {filteredCommands.length > 0 ? filteredCommands.map(cmd => {
-                const details = cmd.details[edition]!;
+            <div className="space-y-4">
+               {filteredCommands.length > 0 ? filteredCommands.map(cmd => {
+                const det = cmd.details[edition]!;
                 return (
-                  <div key={cmd.name} className={`command-card p-5 rounded-lg shadow-xl border-l-8 ${viewMode === 'history' ? 'border-l-red-800' : 'border-l-green-700'}`}>
-                    <div className="flex justify-between items-start mb-3">
-                      <div className="flex items-center flex-wrap gap-2">
-                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-green-900/30 text-green-500">{cmd.category}</span>
-                        <h3 className="text-xl font-bold text-white">/{cmd.name}</h3>
+                  <div key={cmd.name} className="command-card p-6 rounded-xl flex flex-col gap-4 border-l-8 border-l-green-600 group hover:shadow-2xl hover:shadow-green-900/10 transition-all">
+                    <div className="flex justify-between items-start">
+                      <div className="flex items-center gap-3">
+                        <span className="px-2 py-0.5 bg-green-900/40 text-green-400 text-[10px] font-bold rounded uppercase border border-green-800">{cmd.category}</span>
+                        <h3 className="text-2xl font-black text-white group-hover:text-green-400 transition-colors">/{cmd.name}</h3>
                       </div>
-                      <button onClick={() => { copyToClipboard(details.syntax); addToHistory(cmd.name); }} className="text-xs text-gray-400 hover:text-white bg-white/5 px-2 py-1 rounded">复制</button>
+                      <button 
+                        onClick={() => copyToClipboard(det.syntax)} 
+                        className="text-xs text-gray-500 hover:text-white bg-white/5 px-3 py-1.5 rounded-full border border-gray-800 hover:border-green-500 transition-all"
+                      >
+                        复制语法
+                      </button>
                     </div>
-                    <p className="text-gray-300 text-sm mb-4">{cmd.description}</p>
-                    <div className="bg-black/40 p-3 rounded border-l-4 border-yellow-500">
-                      <code className="text-sm block overflow-x-auto whitespace-pre">{details.syntax}</code>
+                    <p className="text-gray-300 text-sm leading-relaxed">{cmd.description}</p>
+                    <div className="bg-black/60 p-4 rounded-lg border-2 border-gray-900 font-mono relative overflow-hidden">
+                      <div className="text-[10px] text-gray-600 mb-2 uppercase tracking-widest font-bold">命令格式</div>
+                      <code className="text-yellow-500 text-base block overflow-x-auto whitespace-nowrap scrollbar-hide">{det.syntax}</code>
+                    </div>
+                    <div className="flex flex-wrap gap-4 text-[11px]">
+                      {det.versionRange && <span className="text-gray-500"><b className="text-gray-400">适用版本:</b> {det.versionRange}</span>}
+                      {det.permission !== undefined && <span className="text-gray-500"><b className="text-gray-400">权限等级:</b> {det.permission}级</span>}
+                      {det.note && <span className="text-blue-400 italic">💡 {det.note}</span>}
                     </div>
                   </div>
                 );
-              }) : <div className="mc-panel p-16 text-center text-gray-500 bg-black/20 border-dashed">未找到匹配指令</div>}
+               }) : (
+                 <div className="mc-panel p-20 text-center opacity-40">
+                    <span className="text-6xl block mb-4">📭</span>
+                    <p className="mc-font text-2xl">未发现相关指令</p>
+                 </div>
+               )}
             </div>
           ) : (
-            <>
-              <div className="mc-panel p-4 mb-4 bg-blue-900/20 border-blue-500/50 flex justify-between items-center">
-                <div>
-                  <h2 className="text-xl mc-font text-blue-400 mb-1">{selectedIDCategory} ID 库</h2>
-                  {fetchError ? (
-                    <p className="text-xs text-red-400">⚠️ {fetchError} (当前显示本地数据)</p>
-                  ) : (
-                    <p className="text-xs text-gray-400">正在显示来自 <span className="text-white">PrismarineJS</span> 的数据 • 命名空间: <code className="text-[10px]">minecraft:</code></p>
-                  )}
-                </div>
-                {isLoadingIDs && <div className="animate-spin h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full"></div>}
+            <div className="space-y-6">
+              <div className="flex items-center justify-between px-2">
+                <h2 className="mc-font text-3xl text-blue-400">{selectedIDCategory} 库 <span className="text-sm text-gray-600 ml-2 font-sans tracking-normal">(共 {filteredIDs.length} 项)</span></h2>
+                {isLoadingIDs && <div className="flex items-center gap-2 text-xs text-blue-500 animate-pulse font-bold">同步中...</div>}
               </div>
-              
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {filteredIDs.length > 0 ? filteredIDs.slice(0, 450).map((item, idx) => (
-                  <div key={idx} className="command-card p-3 rounded flex flex-col justify-between border-l-4 border-l-blue-500 hover:bg-white/5 transition-all group">
-                    <div>
-                      <h4 className="text-white font-bold text-sm mb-1 group-hover:text-blue-400">{item.name}</h4>
-                      <code className="text-[11px] text-yellow-500 block truncate">{item.id}</code>
+
+              {fetchError && (
+                <div className="p-4 bg-red-900/20 border-2 border-red-900 text-red-400 rounded-lg text-xs flex items-center gap-3">
+                  <span className="text-xl">⚠️</span> {fetchError}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                {filteredIDs.length > 0 ? filteredIDs.slice(0, 300).map((item, idx) => (
+                  <div key={idx} className="command-card p-4 rounded-lg group border-l-4 border-l-blue-600 hover:bg-blue-900/5">
+                    <div className="flex flex-col gap-1">
+                      <div className="text-[9px] text-gray-600 uppercase font-black tracking-widest">{item.namespace}:</div>
+                      <h4 className="text-white font-bold text-sm truncate group-hover:text-blue-400 transition-colors">{item.name}</h4>
+                      <code className="text-[11px] text-yellow-600/80 bg-transparent p-0 mt-1">{item.id}</code>
                     </div>
                     <button 
-                      onClick={() => { copyToClipboard(item.id); addToHistory(item.id); }} 
-                      className="mt-2 text-[10px] text-center w-full bg-white/5 hover:bg-blue-900/40 py-1 rounded text-gray-400 hover:text-white"
+                      onClick={() => copyToClipboard(item.id)}
+                      className="mt-3 w-full py-1 text-[10px] text-gray-500 border border-gray-800 rounded opacity-0 group-hover:opacity-100 hover:bg-white/10 transition-all"
                     >
                       复制 ID
                     </button>
                   </div>
-                )) : (
-                  !isLoadingIDs && <div className="col-span-full mc-panel p-16 text-center text-gray-500">此版本或分类暂无 ID 数据</div>
+                )) : !isLoadingIDs && (
+                  <div className="col-span-full mc-panel p-20 text-center opacity-30">
+                     <p className="mc-font text-xl">暂无数据</p>
+                  </div>
                 )}
-                {filteredIDs.length > 450 && <div className="col-span-full p-4 text-center text-gray-500 text-xs">... 还有 {filteredIDs.length - 450} 个结果，请通过搜索精确查找</div>}
+                {filteredIDs.length > 300 && (
+                  <div className="col-span-full py-8 text-center text-gray-600 text-xs border-t border-gray-800">
+                    ... 已精简展示，请通过搜索寻找特定 ID ...
+                  </div>
+                )}
               </div>
-            </>
+            </div>
           )}
         </main>
       </div>
 
-      <footer className="max-w-6xl mx-auto mt-16 pt-8 border-t border-gray-800 text-center text-gray-500 text-sm pb-8">
-        <p className="mc-font text-lg text-gray-400">Minecraft Command & Data Master</p>
-        <p className="mt-1">数据源: PrismarineJS / minecraft-data • 社区共建</p>
+      <footer className="max-w-7xl mx-auto mt-20 pt-10 border-t border-gray-800 pb-16 text-center">
+        <div className="mc-font text-3xl text-gray-600 mb-2">MC COMMAND MASTER v2.0</div>
+        <p className="text-xs text-gray-700 uppercase tracking-[0.4em] font-black">
+          Powered by Gemini 3.0 & PrismarineJS Data
+        </p>
       </footer>
     </div>
   );

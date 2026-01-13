@@ -3,83 +3,96 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>我的世界指令库 | Minecraft Command Wiki</title>
+    <title>Minecraft 指令百科 | 指令与 ID 全能查询</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=VT323&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;700;900&family=VT323&display=swap" rel="stylesheet">
     <style>
         :root {
-            --mc-bg: #1e1e1e;
-            --mc-panel: #313131;
-            --mc-button: #8b8b8b;
-            --mc-button-hover: #aaaaaa;
-            --mc-green: #528038;
-            --mc-border-light: #ffffff;
-            --mc-border-dark: #000000;
+            --mc-bg: #121212;
+            --mc-panel: #242424;
+            --mc-button: #7e7e7e;
+            --mc-green: #388e3c;
+            --mc-blue: #1976d2;
+            --mc-border: #000000;
         }
         body {
             background-color: var(--mc-bg);
-            color: #e0e0e0;
+            color: #f0f0f0;
             font-family: 'Noto Sans SC', sans-serif;
             margin: 0;
             padding: 0;
+            background-image: radial-gradient(circle at 2px 2px, rgba(255,255,255,0.02) 1px, transparent 0);
+            background-size: 32px 32px;
         }
         .mc-font {
             font-family: 'VT323', monospace;
         }
         .mc-button {
             background-color: var(--mc-button);
-            border-top: 2px solid var(--mc-border-light);
-            border-left: 2px solid var(--mc-border-light);
-            border-bottom: 2px solid var(--mc-border-dark);
-            border-right: 2px solid var(--mc-border-dark);
-            padding: 8px 16px;
+            border-top: 3px solid #ccc;
+            border-left: 3px solid #ccc;
+            border-bottom: 3px solid #222;
+            border-right: 3px solid #222;
+            padding: 10px 18px;
             color: white;
-            text-shadow: 2px 2px #3f3f3f;
-            transition: all 0.1s;
-            cursor: pointer;
-            display: inline-block;
+            text-shadow: 2px 2px #000;
+            transition: all 0.05s;
+            box-shadow: 0 4px 0 #000;
+            margin-bottom: 4px;
         }
         .mc-button:active {
-            border-bottom: 2px solid var(--mc-border-light);
-            border-right: 2px solid var(--mc-border-light);
-            border-top: 2px solid var(--mc-border-dark);
-            border-left: 2px solid var(--mc-border-dark);
-            transform: translateY(1px);
+            border-bottom: 3px solid #ccc;
+            border-right: 3px solid #ccc;
+            border-top: 3px solid #222;
+            border-left: 3px solid #222;
+            transform: translateY(4px);
+            box-shadow: none;
+            margin-bottom: 0;
         }
         .mc-button.active {
             background-color: var(--mc-green);
+            border-top-color: #55a659;
+            border-left-color: #55a659;
+            border-bottom-color: #1b5e20;
+            border-right-color: #1b5e20;
         }
         .mc-panel {
             background-color: var(--mc-panel);
             border: 4px solid #000;
-            box-shadow: inset 2px 2px #555, inset -2px -2px #222;
+            position: relative;
+        }
+        .mc-panel::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            border: 2px solid #444;
+            pointer-events: none;
         }
         .command-card {
-            background-color: #262626;
-            border: 2px solid #3c3c3c;
-            transition: border-color 0.2s;
+            background-color: #1a1a1a;
+            border: 2px solid #2a2a2a;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
         }
-        .command-card:hover {
-            border-color: var(--mc-green);
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #000;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #444;
+            border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: var(--mc-green);
         }
         code {
-            background: #111;
-            padding: 2px 6px;
-            border-radius: 4px;
-            color: #ffaa00;
-            font-family: 'Courier New', Courier, monospace;
+            font-family: 'VT323', monospace;
         }
-        ::-webkit-scrollbar {
-            width: 10px;
-        }
-        ::-webkit-scrollbar-track {
-            background: #1a1a1a;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #444;
-            border: 2px solid #1a1a1a;
+        input, select, textarea {
+            box-shadow: inset 0 4px 10px rgba(0,0,0,0.5);
         }
     </style>
 <script type="importmap">
