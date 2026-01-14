@@ -126,7 +126,6 @@ let errorMessage: HTMLElement;
 
 // --- Initialization ---
 window.addEventListener('DOMContentLoaded', () => {
-    // Initialize DOM References
     mainGrid = document.getElementById('main-grid')!;
     searchInput = document.getElementById('search-input') as HTMLInputElement;
     categoryControls = document.getElementById('category-controls')!;
@@ -153,9 +152,15 @@ function setupEventListeners() {
 
     navBtns.forEach(btn => {
         btn.addEventListener('click', () => {
-            state.activeView = btn.getAttribute('data-view') as ActiveView;
-            navBtns.forEach(b => b.classList.toggle('active', b === btn));
-            if (state.activeView === 'ids') fetchIDs();
+            const view = btn.getAttribute('data-view') as ActiveView;
+            state.activeView = view;
+            
+            // 更新按钮激活状态
+            navBtns.forEach(b => b.classList.toggle('active', b.getAttribute('data-view') === view));
+            
+            if (state.activeView === 'ids') {
+                fetchIDs();
+            }
             renderControls();
             updateUI();
         });
@@ -163,13 +168,17 @@ function setupEventListeners() {
 
     editionBtns.forEach(btn => {
         btn.addEventListener('click', () => {
-            state.edition = btn.getAttribute('data-edition') as Edition;
-            editionBtns.forEach(b => {
-                const isMatch = b.getAttribute('data-edition') === state.edition;
-                b.className = `edition-btn text-xs py-2 px-3 rounded border transition-all ${isMatch ? 'bg-green-700 border-green-400 text-white shadow-lg' : 'bg-black/40 border-gray-700 text-gray-500 hover:text-gray-300'}`;
-            });
+            const edition = btn.getAttribute('data-edition') as Edition;
+            state.edition = edition;
+            
+            // 更新按钮激活状态 (使用 classList 避免丢失基础样式)
+            editionBtns.forEach(b => b.classList.toggle('active', b.getAttribute('data-edition') === edition));
+            
             state.selectedVersion = VERSION_MAP[state.edition][0].value;
-            if (state.activeView === 'ids') fetchIDs();
+            
+            if (state.activeView === 'ids') {
+                fetchIDs();
+            }
             renderControls();
             updateUI();
         });
@@ -189,7 +198,7 @@ async function fetchIDs() {
 
     try {
         const res = await fetch(url);
-        if (!res.ok) throw new Error(`HTTP ${res.status}: 无法获取该版本数据`);
+        if (!res.ok) throw new Error(`无法获取数据: ${res.status}`);
         const data = await res.json();
         state.dynamicIDs = data.map((item: any) => ({
             id: item.name,
@@ -197,7 +206,7 @@ async function fetchIDs() {
             namespace: 'minecraft'
         }));
     } catch (err: any) {
-        errorMessage.textContent = `⚠️ ${err.message}`;
+        errorMessage.textContent = `⚠️ 获取失败: ${err.message}`;
         errorMessage.classList.remove('hidden');
         state.dynamicIDs = [];
     } finally {
@@ -214,17 +223,17 @@ async function handleAiAsk() {
     state.isGenerating = true;
     askAiBtn.textContent = '思考中...';
     aiResponseContainer.classList.remove('hidden');
-    aiResponseContainer.textContent = '专家正在连接...';
+    aiResponseContainer.textContent = '正在连接 AI 专家...';
 
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
         const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview',
-            contents: `你是一位深谙《我的世界》全版本的顶级专家。当前环境：${state.edition}。问题：${input}。请用专业中文回答，并提供具体的指令代码。`
+            contents: `你是一位深谙《我的世界》全版本的顶级专家。当前环境：${state.edition}版。用户问题：${input}。请用简洁专业的中文回答，并在回答末尾附带相关指令。`
         });
-        aiResponseContainer.textContent = response.text || '无法生成回答。';
+        aiResponseContainer.textContent = response.text || '专家暂时没有回答。';
     } catch (err) {
-        aiResponseContainer.textContent = '专家由于网络波动掉线了，请重试。';
+        aiResponseContainer.textContent = '连接失败。请检查 API 配置或稍后再试。';
     } finally {
         state.isGenerating = false;
         askAiBtn.textContent = '提交问题';
@@ -245,7 +254,8 @@ function renderControls() {
         grid.className = 'grid grid-cols-2 gap-2';
         ['全部', '基础', '作弊', '管理', '技术', '教育'].forEach(cat => {
             const btn = document.createElement('button');
-            btn.className = `text-xs py-2 rounded border transition-all ${state.selectedCategory === cat ? 'bg-blue-700 border-blue-400 text-white shadow-lg' : 'bg-black/40 border-gray-700 text-gray-500 hover:text-gray-300'}`;
+            // 保持 mc-button 类以获得反馈
+            btn.className = `mc-button edition-btn ${state.selectedCategory === cat ? 'active' : ''}`;
             btn.textContent = cat;
             btn.onclick = () => {
                 state.selectedCategory = cat;
@@ -256,7 +266,6 @@ function renderControls() {
         });
         categoryControls.appendChild(grid);
     } else {
-        // ID View Controls
         const verLabel = document.createElement('label');
         verLabel.className = 'text-[10px] text-gray-500 block mb-2 uppercase font-black tracking-[0.2em]';
         verLabel.textContent = '数据库版本';
@@ -286,7 +295,8 @@ function renderControls() {
         list.className = 'flex flex-col gap-1';
         Object.keys(CATEGORY_FILE_MAP).forEach(cat => {
             const btn = document.createElement('button');
-            btn.className = `text-left text-xs py-2 px-3 rounded transition-all ${state.selectedIDCategory === cat ? 'bg-blue-800 text-white border-l-4 border-blue-400' : 'text-gray-500 hover:bg-white/5'}`;
+            btn.className = `mc-button edition-btn ${state.selectedIDCategory === cat ? 'active' : ''}`;
+            btn.style.textAlign = 'left';
             btn.textContent = cat;
             btn.onclick = () => {
                 state.selectedIDCategory = cat;
@@ -302,8 +312,10 @@ function renderControls() {
 function updateUI() {
     if (!mainGrid) return;
     mainGrid.innerHTML = '';
+    
+    // 显示加载状态
     loadingSpinner.classList.toggle('hidden', !state.isLoading);
-    contentHeader.classList.toggle('hidden', state.activeView === 'wiki' && !state.search);
+    contentHeader.classList.toggle('hidden', state.activeView === 'wiki' && !state.search && state.selectedCategory === '全部');
 
     if (state.activeView === 'wiki') {
         renderWiki();
@@ -316,14 +328,23 @@ function renderWiki() {
     const filtered = COMMAND_DATABASE.filter(cmd => {
         const details = (cmd.details as any)[state.edition];
         if (!details) return false;
-        const matchesSearch = cmd.name.toLowerCase().includes(state.search.toLowerCase()) || cmd.description.includes(state.search);
-        const matchesCategory = state.selectedCategory === '全部' || cmd.category === state.selectedCategory;
-        // Fix: Use state.selectedCategory consistently to avoid scope errors
-        return matchesSearch && matchesCategory && !(details as any).isDeprecated;
+        
+        const matchesSearch = cmd.name.toLowerCase().includes(state.search.toLowerCase()) || 
+                             cmd.description.includes(state.search);
+        
+        const matchesCategory = state.selectedCategory === '全部' || 
+                               cmd.category === state.selectedCategory;
+                               
+        return matchesSearch && matchesCategory;
     });
 
     if (filtered.length === 0) {
-        mainGrid.innerHTML = `<div class="mc-panel p-20 text-center opacity-40"><span class="text-6xl block mb-4">📭</span><p class="mc-font text-2xl">未发现相关指令</p></div>`;
+        mainGrid.innerHTML = `
+            <div class="mc-panel p-20 text-center opacity-40">
+                <span class="text-6xl block mb-4">📭</span>
+                <p class="mc-font text-2xl">该分类下暂无 ${state.edition} 指令</p>
+                <p class="text-xs text-gray-600 mt-2">请尝试切换分类或平台</p>
+            </div>`;
         return;
     }
 
@@ -337,16 +358,17 @@ function renderWiki() {
                     <span class="px-2 py-0.5 bg-green-900/40 text-green-400 text-[10px] font-bold rounded uppercase border border-green-800">${cmd.category}</span>
                     <h3 class="text-2xl font-black text-white group-hover:text-green-400 transition-colors">/${cmd.name}</h3>
                 </div>
-                <button class="copy-btn text-xs text-gray-500 hover:text-white bg-white/5 px-3 py-1.5 rounded-full border border-gray-800 hover:border-green-500">复制语法</button>
+                <button class="copy-btn text-xs text-gray-500 hover:text-white bg-white/5 px-3 py-1.5 rounded-full border border-gray-800 hover:border-green-500 transition-colors">复制语法</button>
             </div>
             <p class="text-gray-300 text-sm">${cmd.description}</p>
             <div class="bg-black/60 p-4 rounded-lg border-2 border-gray-900 font-mono relative overflow-hidden">
                 <div class="text-[10px] text-gray-600 mb-2 uppercase tracking-widest font-bold">命令格式</div>
-                <code class="text-yellow-500 text-base block overflow-x-auto">${det.syntax}</code>
+                <code class="text-yellow-500 text-base block overflow-x-auto custom-scrollbar">${det.syntax}</code>
             </div>
             <div class="flex flex-wrap gap-4 text-[11px] text-gray-500">
                 ${det.versionRange ? `<span>适用版本: ${det.versionRange}</span>` : ''}
                 ${det.permission !== undefined ? `<span>权限: ${det.permission}级</span>` : ''}
+                ${det.note ? `<span class="text-blue-400 italic">💡 ${det.note}</span>` : ''}
             </div>
         `;
         card.querySelector('.copy-btn')?.addEventListener('click', () => {
@@ -381,7 +403,7 @@ function renderIDs() {
                 <h4 class="text-white font-bold text-sm truncate group-hover:text-blue-400">${item.name}</h4>
                 <code class="text-[11px] text-yellow-600/80 mt-1">${item.id}</code>
             </div>
-            <button class="mt-3 w-full py-1 text-[10px] text-gray-500 border border-gray-800 rounded opacity-0 group-hover:opacity-100 hover:bg-white/10">复制 ID</button>
+            <button class="mt-3 w-full py-1 text-[10px] text-gray-500 border border-gray-800 rounded opacity-0 group-hover:opacity-100 hover:bg-white/10 transition-all">复制 ID</button>
         `;
         card.querySelector('button')?.addEventListener('click', () => {
             navigator.clipboard.writeText(item.id);
@@ -393,7 +415,7 @@ function renderIDs() {
     if (filtered.length > 300) {
         const more = document.createElement('div');
         more.className = 'py-8 text-center text-gray-600 text-xs border-t border-gray-800';
-        more.textContent = `... 已精简展示，请通过搜索寻找特定 ID ...`;
+        more.textContent = `... 已精简展示前 300 项，请通过搜索寻找特定 ID ...`;
         mainGrid.appendChild(more);
     }
 }
