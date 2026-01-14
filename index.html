@@ -41,6 +41,9 @@
             transition: all 0.05s;
             box-shadow: 0 4px 0 #000;
             margin-bottom: 4px;
+            width: 100%;
+            text-align: left;
+            font-size: 0.875rem;
         }
         .mc-button:active {
             border-bottom: 3px solid #ccc;
@@ -93,21 +96,96 @@
         }
         input, select, textarea {
             box-shadow: inset 0 4px 10px rgba(0,0,0,0.5);
+            border-radius: 4px;
         }
     </style>
-<script type="importmap">
-{
-  "imports": {
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react": "https://esm.sh/react@^19.2.3",
-    "@google/genai": "https://esm.sh/@google/genai@^1.35.0",
-    "react/": "https://esm.sh/react@^19.2.3/"
-  }
-}
-</script>
+    <script type="importmap">
+    {
+      "imports": {
+        "@google/genai": "https://esm.sh/@google/genai@^1.35.0"
+      }
+    }
+    </script>
 </head>
 <body>
-    <div id="root"></div>
+    <div id="app" class="min-h-screen p-4 md:p-8">
+        <header class="max-w-7xl mx-auto mb-8 text-center">
+            <h1 class="text-5xl md:text-7xl mc-font text-white mb-4 drop-shadow-xl tracking-tighter">
+                MINECRAFT 指令百科
+            </h1>
+            <div class="h-1 w-32 bg-green-600 mx-auto rounded-full shadow-lg"></div>
+        </header>
+
+        <div class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <!-- Sidebar -->
+            <aside class="lg:col-span-3 space-y-6">
+                <section class="mc-panel p-5">
+                    <h3 class="mc-font text-2xl text-yellow-400 mb-5 border-b border-white/10 pb-2">功能导航</h3>
+                    <div id="nav-buttons" class="flex flex-col gap-3 mb-8">
+                        <button data-view="wiki" class="mc-button nav-btn active">📚 指令百科</button>
+                        <button data-view="ids" class="mc-button nav-btn">🆔 万能 ID 库</button>
+                    </div>
+
+                    <div class="space-y-6">
+                        <div>
+                            <label class="text-[10px] text-gray-500 block mb-2 uppercase font-black tracking-[0.2em]">游戏平台</label>
+                            <div id="edition-buttons" class="grid grid-cols-2 gap-2">
+                                <button data-edition="Java" class="edition-btn text-xs py-2 px-3 rounded border bg-green-700 border-green-400 text-white">Java</button>
+                                <button data-edition="Bedrock" class="edition-btn text-xs py-2 px-3 rounded border bg-black/40 border-gray-700 text-gray-500">Bedrock</button>
+                                <button data-edition="Education" class="edition-btn text-xs py-2 px-3 rounded border bg-black/40 border-gray-700 text-gray-500">Education</button>
+                                <button data-edition="NetEase" class="edition-btn text-xs py-2 px-3 rounded border bg-black/40 border-gray-700 text-gray-500">NetEase</button>
+                            </div>
+                        </div>
+
+                        <!-- Dynamic Control Section -->
+                        <div id="category-controls">
+                            <!-- Wiki categories or ID versions will go here -->
+                        </div>
+                    </div>
+                </section>
+
+                <section class="mc-panel p-5 bg-[#403025]">
+                    <h3 class="mc-font text-2xl text-blue-400 mb-4 flex items-center gap-2">AI 专家问答</h3>
+                    <div class="relative group">
+                        <textarea id="ai-input" class="w-full bg-black/80 border-2 border-gray-700 p-3 text-white h-32 text-xs mb-3 outline-none focus:border-blue-500 rounded transition-all" placeholder="例如：如何用指令生成一个骑着猪的僵尸？"></textarea>
+                        <div class="absolute top-2 right-2 opacity-20 group-hover:opacity-100 transition-opacity">
+                            <span class="text-[10px] bg-blue-600 px-1 rounded text-white">Gemini 3.0</span>
+                        </div>
+                    </div>
+                    <button id="ask-ai-btn" class="mc-button w-full">提交问题</button>
+                    <div id="ai-response-container" class="hidden mt-4 p-4 bg-black/60 border border-blue-900/50 rounded-lg text-xs leading-relaxed text-blue-100 font-mono overflow-y-auto max-h-64 custom-scrollbar whitespace-pre-wrap shadow-inner"></div>
+                </section>
+            </aside>
+
+            <!-- Main Content -->
+            <main class="lg:col-span-9 space-y-6">
+                <div class="mc-panel p-4 flex items-center gap-4 bg-black/20">
+                    <div class="flex-1 relative">
+                        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">🔍</span>
+                        <input id="search-input" type="text" placeholder="搜索指令 (如: tp, fill, execute)..." class="w-full bg-black/60 border-2 border-gray-800 py-3 pl-10 pr-4 text-white rounded-md focus:border-green-600 outline-none transition-colors">
+                    </div>
+                </div>
+
+                <div id="content-header" class="hidden px-2 flex justify-between items-center">
+                    <h2 id="view-title" class="mc-font text-3xl text-blue-400"></h2>
+                    <div id="loading-spinner" class="hidden text-xs text-blue-500 animate-pulse font-bold">同步中...</div>
+                </div>
+
+                <div id="error-message" class="hidden p-4 bg-red-900/20 border-2 border-red-900 text-red-400 rounded-lg text-xs items-center gap-3"></div>
+
+                <div id="main-grid" class="space-y-4">
+                    <!-- Cards will be injected here -->
+                </div>
+            </main>
+        </div>
+
+        <footer class="max-w-7xl mx-auto mt-20 pt-10 border-t border-gray-800 pb-16 text-center">
+            <div class="mc-font text-3xl text-gray-600 mb-2">MC COMMAND MASTER v2.0</div>
+            <p class="text-xs text-gray-700 uppercase tracking-[0.4em] font-black">
+                Powered by Gemini 3.0 & Vanilla JS
+            </p>
+        </footer>
+    </div>
     <script type="module" src="index.tsx"></script>
 </body>
 </html>
