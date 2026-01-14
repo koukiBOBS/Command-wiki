@@ -111,27 +111,39 @@ let state = {
 };
 
 // --- DOM References ---
-const mainGrid = document.getElementById('main-grid')!;
-const searchInput = document.getElementById('search-input') as HTMLInputElement;
-const categoryControls = document.getElementById('category-controls')!;
-const loadingSpinner = document.getElementById('loading-spinner')!;
-const editionBtns = document.querySelectorAll('.edition-btn');
-const navBtns = document.querySelectorAll('.nav-btn');
-const aiInput = document.getElementById('ai-input') as HTMLTextAreaElement;
-const askAiBtn = document.getElementById('ask-ai-btn')!;
-const aiResponseContainer = document.getElementById('ai-response-container')!;
-const viewTitle = document.getElementById('view-title')!;
-const contentHeader = document.getElementById('content-header')!;
-const errorMessage = document.getElementById('error-message')!;
+let mainGrid: HTMLElement;
+let searchInput: HTMLInputElement;
+let categoryControls: HTMLElement;
+let loadingSpinner: HTMLElement;
+let editionBtns: NodeListOf<Element>;
+let navBtns: NodeListOf<Element>;
+let aiInput: HTMLTextAreaElement;
+let askAiBtn: HTMLElement;
+let aiResponseContainer: HTMLElement;
+let viewTitle: HTMLElement;
+let contentHeader: HTMLElement;
+let errorMessage: HTMLElement;
 
 // --- Initialization ---
-init();
+window.addEventListener('DOMContentLoaded', () => {
+    // Initialize DOM References
+    mainGrid = document.getElementById('main-grid')!;
+    searchInput = document.getElementById('search-input') as HTMLInputElement;
+    categoryControls = document.getElementById('category-controls')!;
+    loadingSpinner = document.getElementById('loading-spinner')!;
+    editionBtns = document.querySelectorAll('.edition-btn');
+    navBtns = document.querySelectorAll('.nav-btn');
+    aiInput = document.getElementById('ai-input') as HTMLTextAreaElement;
+    askAiBtn = document.getElementById('ask-ai-btn')!;
+    aiResponseContainer = document.getElementById('ai-response-container')!;
+    viewTitle = document.getElementById('view-title')!;
+    contentHeader = document.getElementById('content-header')!;
+    errorMessage = document.getElementById('error-message')!;
 
-function init() {
     setupEventListeners();
     renderControls();
     updateUI();
-}
+});
 
 function setupEventListeners() {
     searchInput.addEventListener('input', (e) => {
@@ -288,6 +300,7 @@ function renderControls() {
 }
 
 function updateUI() {
+    if (!mainGrid) return;
     mainGrid.innerHTML = '';
     loadingSpinner.classList.toggle('hidden', !state.isLoading);
     contentHeader.classList.toggle('hidden', state.activeView === 'wiki' && !state.search);
@@ -305,7 +318,8 @@ function renderWiki() {
         if (!details) return false;
         const matchesSearch = cmd.name.toLowerCase().includes(state.search.toLowerCase()) || cmd.description.includes(state.search);
         const matchesCategory = state.selectedCategory === '全部' || cmd.category === state.selectedCategory;
-        return matchesSearch && matchesCategory && !details.isDeprecated;
+        // Fix: Use state.selectedCategory consistently to avoid scope errors
+        return matchesSearch && matchesCategory && !(details as any).isDeprecated;
     });
 
     if (filtered.length === 0) {
