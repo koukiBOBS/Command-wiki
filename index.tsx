@@ -1,362 +1,312 @@
 import { GoogleGenAI } from '@google/genai';
 
-// --- 类型与常量数据 ---
+// --- 数据定义 ---
 type Edition = 'Java' | 'Bedrock' | 'Education' | 'NetEase';
-type ActiveView = 'wiki' | 'ids';
+type ViewMode = 'wiki' | 'ids';
 
-const VERSION_MAP: Record<Edition, { label: string; value: string }[]> = {
-    Java: [
-        { label: '1.21', value: 'pc/1.21' },
-        { label: '1.20.1', value: 'pc/1.20.1' },
-        { label: '1.19.4', value: 'pc/1.19.4' },
-        { label: '1.12.2', value: 'pc/1.12.2' },
-    ],
-    Bedrock: [
-        { label: '1.21.0', value: 'bedrock/1.21.0' },
-        { label: '1.20.0', value: 'bedrock/1.20.0' },
-    ],
-    Education: [{ label: '最新教育版', value: 'bedrock/1.21.0' }],
-    NetEase: [{ label: '1.12.2 (中国版)', value: 'pc/1.12.2' }],
+const VERSIONS: Record<Edition, { label: string; value: string }[]> = {
+    Java: [{ label: '1.21', value: 'pc/1.21' }, { label: '1.20.1', value: 'pc/1.20.1' }, { label: '1.12.2', value: 'pc/1.12.2' }],
+    Bedrock: [{ label: '1.21.0', value: 'bedrock/1.21.0' }, { label: '1.20.0', value: 'bedrock/1.20.0' }],
+    Education: [{ label: '1.21.0', value: 'bedrock/1.21.0' }],
+    NetEase: [{ label: '1.12.2', value: 'pc/1.12.2' }],
 };
 
-const CATEGORY_FILE_MAP: Record<string, string> = {
-    '物品与方块': 'items.json',
-    '实体': 'entities.json',
-    '状态效果': 'effects.json',
-    '生物群系': 'biomes.json',
-};
-
-const COMMAND_DATABASE = [
-    { name: 'help / ?', description: '提供指令的使用指南。', category: '基础', details: { Java: { syntax: '/help [指令]' }, Bedrock: { syntax: '/help [页码]' }, Education: { syntax: '/help' } } },
-    { name: 'tp / teleport', description: '将实体传送至特定坐标或目标。', category: '基础', details: { Java: { syntax: '/tp <目标> <目的地>' }, Bedrock: { syntax: '/tp <目标> <目的地>' } } },
-    { name: 'give', description: '给予玩家指定物品。', category: '作弊', details: { Java: { syntax: '/give <玩家> <物品> [数量]' }, Bedrock: { syntax: '/give <玩家> <物品> [数量] [数据]' } } },
-    { name: 'gamemode', description: '更改玩家的游戏模式。', category: '作弊', details: { Java: { syntax: '/gamemode <模式> [玩家]' }, Bedrock: { syntax: '/gamemode <模式> [玩家]' } } },
-    { name: 'execute', description: '在特定条件下执行指令。', category: '技术', details: { Java: { syntax: '/execute ... run <指令>' }, Bedrock: { syntax: '/execute ... run <指令>' } } },
-    { name: 'ability', description: '赋予或剥夺玩家的能力。', category: '教育', details: { Education: { syntax: '/ability <玩家> <能力> <值>' }, Bedrock: { syntax: '/ability <玩家> <能力> <值>' } } },
-    { name: 'wb / worldbuilder', description: '切换世界建造者状态。', category: '教育', details: { Education: { syntax: '/wb' } } }
+const COMMAND_DATA = [
+    { name: 'tp', desc: '传送实体。', cat: '基础', syntax: '/tp <目标> <坐标>' },
+    { name: 'give', desc: '给予物品。', cat: '物品', syntax: '/give <玩家> <物品> [数量]' },
+    { name: 'gamemode', desc: '切换模式。', cat: '基础', syntax: '/gamemode <模式> [玩家]' },
+    { name: 'execute', desc: '在指定条件下执行指令。', cat: '技术', syntax: '/execute ... run <指令>' },
+    { name: 'ability', desc: '设置玩家能力。', cat: '教育', syntax: '/ability <玩家> <能力> <值>' },
+    { name: 'fill', desc: '填充方块。', cat: '建筑', syntax: '/fill <起点> <终点> <方块>' },
+    { name: 'summon', desc: '召唤实体。', cat: '基础', syntax: '/summon <实体> [坐标]' }
 ];
 
-// --- 应用状态 ---
-let state = {
-    activeView: 'wiki' as ActiveView,
-    edition: 'Java' as Edition,
-    selectedCategory: '全部',
-    selectedIDCategory: '物品与方块',
-    selectedVersion: VERSION_MAP['Java'][0].value,
-    search: '',
-    dynamicIDs: [] as any[],
-    isLoading: false,
-    isGenerating: false
+const ID_CATEGORY_MAP: Record<string, string> = {
+    '物品/方块': 'items.json',
+    '实体/生物': 'entities.json',
+    '状态效果': 'effects.json',
+    '生物群系': 'biomes.json'
 };
 
-// --- DOM 引用获取函数 ---
-const getEl = (id: string) => document.getElementById(id);
+// --- 应用状态 ---
+const state = {
+    view: 'wiki' as ViewMode,
+    edition: 'Java' as Edition,
+    category: '全部',
+    idCategory: '物品/方块',
+    versionValue: VERSIONS['Java'][0].value,
+    searchQuery: '',
+    idData: [] as any[],
+    loading: false,
+    generating: false
+};
 
-// --- 初始化入口：确保在 Module 环境下正确触发 ---
-function safeInit() {
-    if (document.readyState === 'loading') {
-        window.addEventListener('DOMContentLoaded', initApp);
-    } else {
-        initApp();
-    }
-}
+// --- 工具函数 ---
+const $ = (id: string) => document.getElementById(id);
 
-safeInit();
-
-function initApp() {
-    bindEvents();
+// --- 初始化入口 ---
+function init() {
+    renderView();
     renderControls();
-    updateUI();
+    attachGlobalEvents();
 }
 
-// --- 事件绑定 (使用委托，确保动态生成的按钮也有效) ---
-function bindEvents() {
-    getEl('search-input')?.addEventListener('input', (e) => {
-        state.search = (e.target as HTMLInputElement).value;
-        updateUI();
-    });
-
-    getEl('nav-buttons-container')?.addEventListener('click', (e) => {
-        const btn = (e.target as HTMLElement).closest('.nav-btn');
+// --- 事件委托：解决按钮点击不响应的万能药 ---
+function attachGlobalEvents() {
+    // 监听整个 body 上的点击，通过 data- 属性区分
+    document.body.addEventListener('click', (e) => {
+        const btn = (e.target as HTMLElement).closest('button');
         if (!btn) return;
-        state.activeView = btn.getAttribute('data-view') as ActiveView;
-        if (state.activeView === 'ids') fetchIDs();
-        renderControls();
-        updateUI();
-    });
 
-    // 平台切换监听：修正为 platform-buttons-container
-    getEl('platform-buttons-container')?.addEventListener('click', (e) => {
-        const btn = (e.target as HTMLElement).closest('.platform-btn');
-        if (!btn) return;
-        state.edition = btn.getAttribute('data-edition') as Edition;
-        state.selectedVersion = VERSION_MAP[state.edition][0].value;
-        if (state.activeView === 'ids') fetchIDs();
-        renderControls();
-        updateUI();
-    });
+        const type = btn.getAttribute('data-type');
+        const value = btn.getAttribute('data-value');
 
-    // 分类切换监听：修正类名以防冲突
-    getEl('category-controls')?.addEventListener('click', (e) => {
-        const btn = (e.target as HTMLElement).closest('.cat-btn');
-        if (!btn) return;
-        const cat = btn.getAttribute('data-cat') || '';
-        if (state.activeView === 'wiki') {
-            state.selectedCategory = cat;
-        } else {
-            state.selectedIDCategory = cat;
-            fetchIDs();
+        if (type === 'nav') {
+            state.view = value as ViewMode;
+            if (state.view === 'ids') fetchIDData();
+            renderAll();
+        } else if (type === 'platform') {
+            state.edition = value as Edition;
+            state.versionValue = VERSIONS[state.edition][0].value;
+            if (state.view === 'ids') fetchIDData();
+            renderAll();
+        } else if (type === 'cat-wiki') {
+            state.category = value!;
+            renderAll();
+        } else if (type === 'cat-id') {
+            state.idCategory = value!;
+            fetchIDData();
+            renderAll();
         }
-        renderControls();
-        updateUI();
     });
 
-    getEl('ask-ai-btn')?.addEventListener('click', handleAiAsk);
+    // 搜索框
+    $('search-bar')?.addEventListener('input', (e) => {
+        state.searchQuery = (e.target as HTMLInputElement).value;
+        renderView();
+    });
+
+    // AI 提问
+    $('ask-ai-btn')?.addEventListener('click', handleAI);
 }
 
-// --- 渲染控制器 (侧边栏动态按钮) ---
+// --- 全量刷新 UI ---
+function renderAll() {
+    renderControls();
+    renderView();
+}
+
+// --- 渲染侧边栏动态控件 ---
 function renderControls() {
-    const container = getEl('category-controls');
-    if (!container) return;
+    const container = $('dynamic-controls-container');
+    const navGroup = $('nav-group');
+    const platformGroup = $('platform-group');
+    if (!container || !navGroup || !platformGroup) return;
+
+    // 更新导航高亮
+    navGroup.querySelectorAll('button').forEach(b => 
+        b.classList.toggle('active-status', b.getAttribute('data-value') === state.view));
+
+    // 更新平台高亮
+    platformGroup.querySelectorAll('button').forEach(b => 
+        b.classList.toggle('active-status', b.getAttribute('data-value') === state.edition));
+
     container.innerHTML = '';
 
-    // 精确更新导航按钮高亮
-    document.querySelectorAll('.nav-btn').forEach(b => {
-        b.classList.toggle('active', b.getAttribute('data-view') === state.activeView);
-    });
+    if (state.view === 'wiki') {
+        const label = document.createElement('label');
+        label.className = 'text-[10px] text-gray-500 block mb-2 mt-4 uppercase font-black tracking-[0.2em]';
+        label.textContent = '指令分类';
+        container.appendChild(label);
 
-    // 精确更新平台按钮高亮：排除掉动态生成的按钮
-    document.querySelectorAll('.platform-btn').forEach(b => {
-        b.classList.toggle('active', b.getAttribute('data-edition') === state.edition);
-    });
-
-    if (state.activeView === 'wiki') {
-        createLabel(container, '指令分类');
         const grid = document.createElement('div');
         grid.className = 'grid grid-cols-2 gap-2';
-        ['全部', '基础', '作弊', '管理', '技术', '教育'].forEach(cat => {
+        ['全部', '基础', '物品', '技术', '建筑', '教育'].forEach(c => {
             const btn = document.createElement('button');
-            // 此处分类按钮不再使用 platform-btn 类名，避免样式逻辑冲突
-            btn.className = `mc-button cat-btn ${state.selectedCategory === cat ? 'active' : ''}`;
-            btn.setAttribute('data-cat', cat);
-            btn.textContent = cat;
+            btn.className = `mc-button ${state.category === c ? 'active-status' : ''}`;
+            btn.setAttribute('data-type', 'cat-wiki');
+            btn.setAttribute('data-value', c);
+            btn.textContent = c;
             grid.appendChild(btn);
         });
         container.appendChild(grid);
     } else {
-        createLabel(container, '数据库版本');
+        const vLabel = document.createElement('label');
+        vLabel.className = 'text-[10px] text-gray-500 block mb-2 mt-4 uppercase font-black tracking-[0.2em]';
+        vLabel.textContent = '数据库版本';
+        container.appendChild(vLabel);
+
         const select = document.createElement('select');
-        select.className = 'w-full bg-black/60 border border-gray-700 p-2 text-white text-xs rounded outline-none mb-4';
-        VERSION_MAP[state.edition].forEach(v => {
+        select.className = 'w-full bg-black border-2 border-gray-800 p-2 text-white text-xs mb-4 outline-none';
+        VERSIONS[state.edition].forEach(v => {
             const opt = document.createElement('option');
             opt.value = v.value;
             opt.textContent = v.label;
-            opt.selected = state.selectedVersion === v.value;
+            opt.selected = state.versionValue === v.value;
             select.appendChild(opt);
         });
         select.onchange = (e) => {
-            state.selectedVersion = (e.target as HTMLSelectElement).value;
-            fetchIDs();
+            state.versionValue = (e.target as HTMLSelectElement).value;
+            fetchIDData();
         };
         container.appendChild(select);
 
-        createLabel(container, '库分类');
+        const cLabel = document.createElement('label');
+        cLabel.className = 'text-[10px] text-gray-500 block mb-2 uppercase font-black tracking-[0.2em]';
+        cLabel.textContent = '库分类';
+        container.appendChild(cLabel);
+
         const list = document.createElement('div');
         list.className = 'flex flex-col gap-1';
-        Object.keys(CATEGORY_FILE_MAP).forEach(cat => {
+        Object.keys(ID_CATEGORY_MAP).forEach(c => {
             const btn = document.createElement('button');
-            btn.className = `mc-button cat-btn ${state.selectedIDCategory === cat ? 'active' : ''}`;
-            btn.style.textAlign = 'left';
-            btn.setAttribute('data-cat', cat);
-            btn.textContent = cat;
+            btn.className = `mc-button ${state.idCategory === c ? 'active-status' : ''}`;
+            btn.setAttribute('data-type', 'cat-id');
+            btn.setAttribute('data-value', c);
+            btn.textContent = c;
             list.appendChild(btn);
         });
         container.appendChild(list);
     }
 }
 
-function createLabel(parent: HTMLElement, text: string) {
-    const l = document.createElement('label');
-    l.className = 'text-[10px] text-gray-500 block mb-2 uppercase font-black tracking-[0.2em] mt-4';
-    l.textContent = text;
-    parent.appendChild(l);
-}
+// --- 核心渲染主区域 ---
+function renderView() {
+    const mount = $('content-mount');
+    const title = $('view-title');
+    const indicator = $('status-indicator');
+    if (!mount || !title) return;
 
-// --- 数据抓取 ---
-async function fetchIDs() {
-    state.isLoading = true;
-    updateUI();
+    mount.innerHTML = '';
+    indicator?.classList.toggle('hidden', !state.loading);
 
-    const fileName = CATEGORY_FILE_MAP[state.selectedIDCategory];
-    // 强制使用 HTTPS 和完整的 raw 路径，增加在不同网络环境下的稳定性
-    const url = `https://raw.githubusercontent.com/PrismarineJS/minecraft-data/master/data/${state.selectedVersion}/${fileName}`;
+    if (state.view === 'wiki') {
+        title.textContent = `${state.edition} 指令百科`;
+        const filtered = COMMAND_DATA.filter(c => {
+            const matchesSearch = c.name.includes(state.searchQuery.toLowerCase()) || c.desc.includes(state.searchQuery);
+            const matchesCat = state.category === '全部' || c.cat === state.category;
+            return matchesSearch && matchesCat;
+        });
 
-    try {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error('Data fetch failed');
-        const data = await res.json();
-        state.dynamicIDs = data.map((item: any) => ({
-            id: item.name,
-            name: item.displayName || item.name,
-            namespace: 'minecraft'
-        }));
-    } catch {
-        state.dynamicIDs = [];
-        const err = getEl('error-message');
-        if (err) {
-            err.textContent = '无法同步最新的 ID 库。请检查网络连接或 GitHub 访问权限。';
-            err.classList.remove('hidden');
+        if (filtered.length === 0) {
+            mount.innerHTML = `<div class="mc-panel p-16 text-center opacity-40 mc-font text-2xl">无匹配指令</div>`;
+        } else {
+            filtered.forEach(c => {
+                const card = document.createElement('div');
+                card.className = 'command-card p-5 rounded-lg border-l-4 border-l-green-600 group';
+                card.innerHTML = `
+                    <div class="flex justify-between items-start mb-2">
+                        <div class="flex items-center gap-2">
+                            <span class="text-[9px] px-1 bg-green-900/50 text-green-400 border border-green-800 font-bold">${c.cat}</span>
+                            <h4 class="text-xl font-bold text-white">/${c.name}</h4>
+                        </div>
+                        <button class="text-[10px] text-gray-600 hover:text-white" onclick="navigator.clipboard.writeText('${c.syntax}')">复制语法</button>
+                    </div>
+                    <p class="text-gray-400 text-sm mb-3">${c.desc}</p>
+                    <div class="bg-black/80 p-3 font-mono text-yellow-500 text-xs border border-gray-900 rounded">${c.syntax}</div>
+                `;
+                mount.appendChild(card);
+            });
         }
-    } finally {
-        state.isLoading = false;
-        updateUI();
+    } else {
+        title.textContent = `${state.idCategory} - ${state.edition}`;
+        if (state.loading) {
+            mount.innerHTML = `<div class="p-20 text-center animate-pulse mc-font text-xl">正在同步全球数据库...</div>`;
+            return;
+        }
+
+        const filtered = state.idData.filter(i => 
+            i.id.toLowerCase().includes(state.searchQuery.toLowerCase()) || 
+            i.name.toLowerCase().includes(state.searchQuery.toLowerCase())
+        );
+
+        if (filtered.length === 0) {
+            mount.innerHTML = `<div class="mc-panel p-16 text-center opacity-40 mc-font text-2xl">未找到相关 ID</div>`;
+        } else {
+            const grid = document.createElement('div');
+            grid.className = 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3';
+            filtered.slice(0, 300).forEach(i => {
+                const item = document.createElement('div');
+                item.className = 'command-card p-3 border-l-4 border-l-blue-600 cursor-pointer hover:bg-blue-900/10';
+                item.innerHTML = `
+                    <div class="text-[8px] text-gray-600 uppercase mb-1">minecraft:</div>
+                    <div class="text-white font-bold text-sm truncate">${i.name}</div>
+                    <code class="text-[10px] text-yellow-600 block mt-1">${i.id}</code>
+                `;
+                item.onclick = () => navigator.clipboard.writeText(i.id);
+                grid.appendChild(item);
+            });
+            mount.appendChild(grid);
+        }
     }
 }
 
-// --- AI 逻辑：增加对 process 环境的安全判断 ---
-async function handleAiAsk() {
-    const input = (getEl('ai-input') as HTMLTextAreaElement).value.trim();
-    if (!input || state.isGenerating) return;
-
-    state.isGenerating = true;
-    const btn = getEl('ask-ai-btn')!;
-    const resContainer = getEl('ai-response-container')!;
+// --- 数据拉取 ---
+async function fetchIDData() {
+    state.loading = true;
+    renderView();
     
-    btn.textContent = '正在撰写...';
-    resContainer.classList.remove('hidden');
-    resContainer.textContent = '正在召唤 Minecraft 指令大师...';
+    const file = ID_CATEGORY_MAP[state.idCategory];
+    const url = `https://raw.githubusercontent.com/PrismarineJS/minecraft-data/master/data/${state.versionValue}/${file}`;
 
     try {
-        // 安全获取 API Key
-        let apiKey = '';
-        try {
-            apiKey = process.env.API_KEY || '';
-        } catch (e) {
-            console.warn('Process environment not available. Running in static mode.');
-        }
-
-        if (!apiKey) {
-            throw new Error('API Key missing');
-        }
-
-        const ai = new GoogleGenAI({ apiKey: apiKey });
-        const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
-            contents: `Minecraft 环境：${state.edition} 版。玩家提问：${input}。请作为顶级专家回答，输出可以直接在游戏中运行的指令。`
-        });
-        resContainer.textContent = response.text || '专家陷入了沉思，请重试。';
-    } catch (error) {
-        console.error('AI call failed:', error);
-        resContainer.textContent = '无法连接到 AI 专家。请确保您在支持的环境中运行或 API Key 配置正确。';
+        const res = await fetch(url);
+        if (!res.ok) throw new Error();
+        const raw = await res.json();
+        state.idData = raw.map((i: any) => ({
+            id: i.name,
+            name: i.displayName || i.name
+        }));
+    } catch {
+        state.idData = [];
+        $('error-display')!.textContent = '无法从源镜像同步 ID 数据库。请检查网络。';
+        $('error-display')!.classList.remove('hidden');
     } finally {
-        state.isGenerating = false;
+        state.loading = false;
+        renderView();
+    }
+}
+
+// --- AI 逻辑 ---
+async function handleAI() {
+    const input = ($('ai-input') as HTMLTextAreaElement).value.trim();
+    if (!input || state.generating) return;
+
+    state.generating = true;
+    const btn = $('ask-ai-btn')!;
+    const res = $('ai-response')!;
+    
+    btn.textContent = '大师正在思考...';
+    res.classList.remove('hidden');
+    res.textContent = '正在撰写详细回复...';
+
+    try {
+        // 安全检测 API Key
+        let key = '';
+        try { key = process.env.API_KEY || ''; } catch {}
+
+        if (!key) {
+            res.textContent = 'AI 专家目前无法连接（API 密钥未配置）。请先在 AI Studio 环境下运行。';
+            return;
+        }
+
+        const ai = new GoogleGenAI({ apiKey: key });
+        const result = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: `你是一位全版本 Minecraft 指令大师。版本：${state.edition}。用户问题：${input}。请用专业简练的中文回答。`
+        });
+        res.textContent = result.text || '大师保持了沉默。';
+    } catch (e) {
+        res.textContent = '召唤专家失败，请稍后重试。';
+    } finally {
+        state.generating = false;
         btn.textContent = '提交问题';
     }
 }
 
-// --- 核心渲染更新 ---
-function updateUI() {
-    const grid = getEl('main-grid');
-    if (!grid) return;
-    grid.innerHTML = '';
-    
-    getEl('loading-spinner')?.classList.toggle('hidden', !state.isLoading);
-
-    if (state.activeView === 'wiki') {
-        renderWikiView(grid);
-    } else {
-        renderIDView(grid);
-    }
-}
-
-function renderWikiView(container: HTMLElement) {
-    const title = getEl('view-title');
-    if (title) title.textContent = `${state.edition} 版指令`;
-    getEl('content-header')?.classList.remove('hidden');
-
-    const filtered = COMMAND_DATABASE.filter(cmd => {
-        const details = (cmd.details as any)[state.edition];
-        if (!details) return false;
-        const matchesSearch = cmd.name.toLowerCase().includes(state.search.toLowerCase()) || cmd.description.includes(state.search);
-        const matchesCategory = state.selectedCategory === '全部' || cmd.category === state.selectedCategory;
-        return matchesSearch && matchesCategory;
-    });
-
-    if (filtered.length === 0) {
-        container.innerHTML = `<div class="p-20 text-center opacity-40 mc-font text-2xl">未发现匹配的指令</div>`;
-        return;
-    }
-
-    filtered.forEach(cmd => {
-        const det = (cmd.details as any)[state.edition];
-        const card = document.createElement('div');
-        card.className = 'command-card p-6 rounded-xl border-l-8 border-l-green-600 group hover:border-l-green-400 transition-all';
-        card.innerHTML = `
-            <div class="flex justify-between items-start mb-4">
-                <div class="flex items-center gap-3">
-                    <span class="px-2 py-0.5 bg-green-900/40 text-green-400 text-[10px] font-bold rounded border border-green-800">${cmd.category}</span>
-                    <h3 class="text-2xl font-black text-white group-hover:text-green-400 transition-colors">/${cmd.name}</h3>
-                </div>
-                <button class="copy-btn text-xs text-gray-500 hover:text-white bg-white/5 px-3 py-1.5 rounded-full border border-gray-800 hover:border-green-500">复制</button>
-            </div>
-            <p class="text-gray-300 text-sm mb-4">${cmd.description}</p>
-            <div class="bg-black/60 p-4 rounded-lg border-2 border-gray-900 font-mono">
-                <code class="text-yellow-500 text-sm block overflow-x-auto custom-scrollbar">${det.syntax}</code>
-            </div>
-        `;
-        card.querySelector('.copy-btn')?.addEventListener('click', () => {
-            navigator.clipboard.writeText(det.syntax).catch(() => {
-                const dummy = document.createElement('textarea');
-                document.body.appendChild(dummy);
-                dummy.value = det.syntax;
-                dummy.select();
-                document.execCommand('copy');
-                document.body.removeChild(dummy);
-            });
-        });
-        container.appendChild(card);
-    });
-}
-
-function renderIDView(container: HTMLElement) {
-    const title = getEl('view-title');
-    if (title) title.textContent = `${state.selectedIDCategory} 库 (${state.edition})`;
-    getEl('content-header')?.classList.remove('hidden');
-
-    const filtered = state.dynamicIDs.filter(item => 
-        item.id.toLowerCase().includes(state.search.toLowerCase()) || 
-        item.name.toLowerCase().includes(state.search.toLowerCase())
-    );
-
-    if (state.isLoading) return;
-    if (filtered.length === 0) {
-        container.innerHTML = `<div class="p-20 text-center opacity-30 mc-font text-xl">请尝试切换版本或分类</div>`;
-        return;
-    }
-
-    const gridLayout = document.createElement('div');
-    gridLayout.className = 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4';
-    
-    filtered.slice(0, 200).forEach(item => {
-        const card = document.createElement('div');
-        card.className = 'command-card p-4 rounded-lg group border-l-4 border-l-blue-600 hover:bg-blue-900/5 cursor-pointer';
-        card.innerHTML = `
-            <div class="text-[9px] text-gray-600 font-black uppercase tracking-widest">${item.namespace}</div>
-            <h4 class="text-white font-bold text-sm truncate group-hover:text-blue-400 transition-colors">${item.name}</h4>
-            <code class="text-[11px] text-yellow-600/80 group-hover:text-yellow-500">${item.id}</code>
-        `;
-        card.onclick = () => {
-            navigator.clipboard.writeText(item.id).catch(() => {
-                const dummy = document.createElement('textarea');
-                document.body.appendChild(dummy);
-                dummy.value = item.id;
-                dummy.select();
-                document.execCommand('copy');
-                document.body.removeChild(dummy);
-            });
-        };
-        gridLayout.appendChild(card);
-    });
-
-    container.appendChild(gridLayout);
+// 启动应用
+if (document.readyState === 'loading') {
+    window.addEventListener('DOMContentLoaded', init);
+} else {
+    init();
 }
