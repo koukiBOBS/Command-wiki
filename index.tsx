@@ -52,10 +52,16 @@ let state = {
 // --- DOM 引用获取函数 ---
 const getEl = (id: string) => document.getElementById(id);
 
-// --- 初始化入口 ---
-window.addEventListener('DOMContentLoaded', () => {
-    initApp();
-});
+// --- 初始化入口：确保在 Module 环境下正确触发 ---
+function safeInit() {
+    if (document.readyState === 'loading') {
+        window.addEventListener('DOMContentLoaded', initApp);
+    } else {
+        initApp();
+    }
+}
+
+safeInit();
 
 function initApp() {
     bindEvents();
@@ -65,41 +71,35 @@ function initApp() {
 
 // --- 事件绑定 (使用委托，确保动态生成的按钮也有效) ---
 function bindEvents() {
-    // 搜索监听
     getEl('search-input')?.addEventListener('input', (e) => {
         state.search = (e.target as HTMLInputElement).value;
         updateUI();
     });
 
-    // 功能导航切换 (委托)
     getEl('nav-buttons-container')?.addEventListener('click', (e) => {
         const btn = (e.target as HTMLElement).closest('.nav-btn');
         if (!btn) return;
         state.activeView = btn.getAttribute('data-view') as ActiveView;
-        
-        // 更新 UI
         if (state.activeView === 'ids') fetchIDs();
         renderControls();
         updateUI();
     });
 
-    // 平台切换 (委托)
-    getEl('edition-buttons-container')?.addEventListener('click', (e) => {
-        const btn = (e.target as HTMLElement).closest('.edition-btn');
+    // 平台切换监听：修正为 platform-buttons-container
+    getEl('platform-buttons-container')?.addEventListener('click', (e) => {
+        const btn = (e.target as HTMLElement).closest('.platform-btn');
         if (!btn) return;
         state.edition = btn.getAttribute('data-edition') as Edition;
         state.selectedVersion = VERSION_MAP[state.edition][0].value;
-        
         if (state.activeView === 'ids') fetchIDs();
         renderControls();
         updateUI();
     });
 
-    // 分类切换 (委托)
+    // 分类切换监听：修正类名以防冲突
     getEl('category-controls')?.addEventListener('click', (e) => {
         const btn = (e.target as HTMLElement).closest('.cat-btn');
         if (!btn) return;
-        
         const cat = btn.getAttribute('data-cat') || '';
         if (state.activeView === 'wiki') {
             state.selectedCategory = cat;
@@ -111,7 +111,6 @@ function bindEvents() {
         updateUI();
     });
 
-    // AI 问答
     getEl('ask-ai-btn')?.addEventListener('click', handleAiAsk);
 }
 
@@ -121,13 +120,13 @@ function renderControls() {
     if (!container) return;
     container.innerHTML = '';
 
-    // 更新导航按钮高亮
+    // 精确更新导航按钮高亮
     document.querySelectorAll('.nav-btn').forEach(b => {
         b.classList.toggle('active', b.getAttribute('data-view') === state.activeView);
     });
 
-    // 更新平台按钮高亮
-    document.querySelectorAll('.edition-btn').forEach(b => {
+    // 精确更新平台按钮高亮：排除掉动态生成的按钮
+    document.querySelectorAll('.platform-btn').forEach(b => {
         b.classList.toggle('active', b.getAttribute('data-edition') === state.edition);
     });
 
@@ -137,7 +136,8 @@ function renderControls() {
         grid.className = 'grid grid-cols-2 gap-2';
         ['全部', '基础', '作弊', '管理', '技术', '教育'].forEach(cat => {
             const btn = document.createElement('button');
-            btn.className = `mc-button edition-btn cat-btn ${state.selectedCategory === cat ? 'active' : ''}`;
+            // 此处分类按钮不再使用 platform-btn 类名，避免样式逻辑冲突
+            btn.className = `mc-button cat-btn ${state.selectedCategory === cat ? 'active' : ''}`;
             btn.setAttribute('data-cat', cat);
             btn.textContent = cat;
             grid.appendChild(btn);
@@ -165,7 +165,7 @@ function renderControls() {
         list.className = 'flex flex-col gap-1';
         Object.keys(CATEGORY_FILE_MAP).forEach(cat => {
             const btn = document.createElement('button');
-            btn.className = `mc-button edition-btn cat-btn ${state.selectedIDCategory === cat ? 'active' : ''}`;
+            btn.className = `mc-button cat-btn ${state.selectedIDCategory === cat ? 'active' : ''}`;
             btn.style.textAlign = 'left';
             btn.setAttribute('data-cat', cat);
             btn.textContent = cat;
@@ -188,11 +188,12 @@ async function fetchIDs() {
     updateUI();
 
     const fileName = CATEGORY_FILE_MAP[state.selectedIDCategory];
+    // 强制使用 HTTPS 和完整的 raw 路径，增加在不同网络环境下的稳定性
     const url = `https://raw.githubusercontent.com/PrismarineJS/minecraft-data/master/data/${state.selectedVersion}/${fileName}`;
 
     try {
         const res = await fetch(url);
-        if (!res.ok) throw new Error();
+        if (!res.ok) throw new Error('Data fetch failed');
         const data = await res.json();
         state.dynamicIDs = data.map((item: any) => ({
             id: item.name,
@@ -203,7 +204,7 @@ async function fetchIDs() {
         state.dynamicIDs = [];
         const err = getEl('error-message');
         if (err) {
-            err.textContent = '无法从远程服务器加载 ID 数据库，请检查网络。';
+            err.textContent = '无法同步最新的 ID 库。请检查网络连接或 GitHub 访问权限。';
             err.classList.remove('hidden');
         }
     } finally {
@@ -212,7 +213,7 @@ async function fetchIDs() {
     }
 }
 
-// --- AI 逻辑 ---
+// --- AI 逻辑：增加对 process 环境的安全判断 ---
 async function handleAiAsk() {
     const input = (getEl('ai-input') as HTMLTextAreaElement).value.trim();
     if (!input || state.isGenerating) return;
@@ -221,19 +222,32 @@ async function handleAiAsk() {
     const btn = getEl('ask-ai-btn')!;
     const resContainer = getEl('ai-response-container')!;
     
-    btn.textContent = '思考中...';
+    btn.textContent = '正在撰写...';
     resContainer.classList.remove('hidden');
-    resContainer.textContent = '正在调遣 AI 专家...';
+    resContainer.textContent = '正在召唤 Minecraft 指令大师...';
 
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+        // 安全获取 API Key
+        let apiKey = '';
+        try {
+            apiKey = process.env.API_KEY || '';
+        } catch (e) {
+            console.warn('Process environment not available. Running in static mode.');
+        }
+
+        if (!apiKey) {
+            throw new Error('API Key missing');
+        }
+
+        const ai = new GoogleGenAI({ apiKey: apiKey });
         const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview',
-            contents: `Minecraft 版本：${state.edition}。问题：${input}。请以资深玩家口吻回答，并提供可以直接复制的指令。`
+            contents: `Minecraft 环境：${state.edition} 版。玩家提问：${input}。请作为顶级专家回答，输出可以直接在游戏中运行的指令。`
         });
-        resContainer.textContent = response.text || '专家今天休息了。';
-    } catch {
-        resContainer.textContent = '连接专家失败，请稍后再试。';
+        resContainer.textContent = response.text || '专家陷入了沉思，请重试。';
+    } catch (error) {
+        console.error('AI call failed:', error);
+        resContainer.textContent = '无法连接到 AI 专家。请确保您在支持的环境中运行或 API Key 配置正确。';
     } finally {
         state.isGenerating = false;
         btn.textContent = '提交问题';
@@ -247,7 +261,6 @@ function updateUI() {
     grid.innerHTML = '';
     
     getEl('loading-spinner')?.classList.toggle('hidden', !state.isLoading);
-    getEl('error-message')?.classList.add('hidden');
 
     if (state.activeView === 'wiki') {
         renderWikiView(grid);
@@ -257,6 +270,10 @@ function updateUI() {
 }
 
 function renderWikiView(container: HTMLElement) {
+    const title = getEl('view-title');
+    if (title) title.textContent = `${state.edition} 版指令`;
+    getEl('content-header')?.classList.remove('hidden');
+
     const filtered = COMMAND_DATABASE.filter(cmd => {
         const details = (cmd.details as any)[state.edition];
         if (!details) return false;
@@ -266,28 +283,37 @@ function renderWikiView(container: HTMLElement) {
     });
 
     if (filtered.length === 0) {
-        container.innerHTML = `<div class="p-20 text-center opacity-40 mc-font text-2xl">暂无相关指令数据</div>`;
+        container.innerHTML = `<div class="p-20 text-center opacity-40 mc-font text-2xl">未发现匹配的指令</div>`;
         return;
     }
 
     filtered.forEach(cmd => {
         const det = (cmd.details as any)[state.edition];
         const card = document.createElement('div');
-        card.className = 'command-card p-6 rounded-xl border-l-8 border-l-green-600 group';
+        card.className = 'command-card p-6 rounded-xl border-l-8 border-l-green-600 group hover:border-l-green-400 transition-all';
         card.innerHTML = `
             <div class="flex justify-between items-start mb-4">
                 <div class="flex items-center gap-3">
                     <span class="px-2 py-0.5 bg-green-900/40 text-green-400 text-[10px] font-bold rounded border border-green-800">${cmd.category}</span>
-                    <h3 class="text-2xl font-black text-white group-hover:text-green-400">/${cmd.name}</h3>
+                    <h3 class="text-2xl font-black text-white group-hover:text-green-400 transition-colors">/${cmd.name}</h3>
                 </div>
-                <button class="copy-btn text-xs text-gray-500 hover:text-white bg-white/5 px-3 py-1.5 rounded-full border border-gray-800">复制</button>
+                <button class="copy-btn text-xs text-gray-500 hover:text-white bg-white/5 px-3 py-1.5 rounded-full border border-gray-800 hover:border-green-500">复制</button>
             </div>
             <p class="text-gray-300 text-sm mb-4">${cmd.description}</p>
             <div class="bg-black/60 p-4 rounded-lg border-2 border-gray-900 font-mono">
-                <code class="text-yellow-500 text-sm block overflow-x-auto">${det.syntax}</code>
+                <code class="text-yellow-500 text-sm block overflow-x-auto custom-scrollbar">${det.syntax}</code>
             </div>
         `;
-        card.querySelector('.copy-btn')?.addEventListener('click', () => navigator.clipboard.writeText(det.syntax));
+        card.querySelector('.copy-btn')?.addEventListener('click', () => {
+            navigator.clipboard.writeText(det.syntax).catch(() => {
+                const dummy = document.createElement('textarea');
+                document.body.appendChild(dummy);
+                dummy.value = det.syntax;
+                dummy.select();
+                document.execCommand('copy');
+                document.body.removeChild(dummy);
+            });
+        });
         container.appendChild(card);
     });
 }
@@ -304,7 +330,7 @@ function renderIDView(container: HTMLElement) {
 
     if (state.isLoading) return;
     if (filtered.length === 0) {
-        container.innerHTML = `<div class="p-20 text-center opacity-30 mc-font text-xl">正在同步或无匹配数据...</div>`;
+        container.innerHTML = `<div class="p-20 text-center opacity-30 mc-font text-xl">请尝试切换版本或分类</div>`;
         return;
     }
 
@@ -315,11 +341,20 @@ function renderIDView(container: HTMLElement) {
         const card = document.createElement('div');
         card.className = 'command-card p-4 rounded-lg group border-l-4 border-l-blue-600 hover:bg-blue-900/5 cursor-pointer';
         card.innerHTML = `
-            <div class="text-[9px] text-gray-600 font-black uppercase">${item.namespace}</div>
-            <h4 class="text-white font-bold text-sm truncate group-hover:text-blue-400">${item.name}</h4>
-            <code class="text-[11px] text-yellow-600/80">${item.id}</code>
+            <div class="text-[9px] text-gray-600 font-black uppercase tracking-widest">${item.namespace}</div>
+            <h4 class="text-white font-bold text-sm truncate group-hover:text-blue-400 transition-colors">${item.name}</h4>
+            <code class="text-[11px] text-yellow-600/80 group-hover:text-yellow-500">${item.id}</code>
         `;
-        card.onclick = () => navigator.clipboard.writeText(item.id);
+        card.onclick = () => {
+            navigator.clipboard.writeText(item.id).catch(() => {
+                const dummy = document.createElement('textarea');
+                document.body.appendChild(dummy);
+                dummy.value = item.id;
+                dummy.select();
+                document.execCommand('copy');
+                document.body.removeChild(dummy);
+            });
+        };
         gridLayout.appendChild(card);
     });
 
