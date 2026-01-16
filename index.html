@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Minecraft 指令百科 | 指令与 ID 全能查询</title>
+    <title>Minecraft 指令百科 | 极致兼容版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -46,6 +46,8 @@
             font-size: 0.875rem;
             display: flex;
             align-items: center;
+            cursor: pointer;
+            user-select: none;
         }
         .mc-button:active {
             border-bottom: 3px solid #ccc;
@@ -57,11 +59,11 @@
             margin-bottom: 0;
         }
         .mc-button.active {
-            background-color: var(--mc-green);
-            border-top-color: #55a659;
-            border-left-color: #55a659;
-            border-bottom-color: #1b5e20;
-            border-right-color: #1b5e20;
+            background-color: var(--mc-green) !important;
+            border-top-color: #55a659 !important;
+            border-left-color: #55a659 !important;
+            border-bottom-color: #1b5e20 !important;
+            border-right-color: #1b5e20 !important;
         }
         .mc-panel {
             background-color: var(--mc-panel);
@@ -93,14 +95,10 @@
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
             background: var(--mc-green);
         }
-        code {
-            font-family: 'VT323', monospace;
-        }
         input, select, textarea {
             box-shadow: inset 0 4px 10px rgba(0,0,0,0.5);
             border-radius: 4px;
         }
-        /* 针对版本按钮的微调 */
         .edition-btn {
             padding: 8px 10px;
             font-size: 0.75rem;
@@ -125,11 +123,10 @@
         </header>
 
         <div class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
-            <!-- Sidebar -->
             <aside class="lg:col-span-3 space-y-6">
                 <section class="mc-panel p-5">
                     <h3 class="mc-font text-2xl text-yellow-400 mb-5 border-b border-white/10 pb-2">功能导航</h3>
-                    <div id="nav-buttons" class="flex flex-col gap-3 mb-8">
+                    <div id="nav-buttons-container" class="flex flex-col gap-3 mb-8">
                         <button data-view="wiki" class="mc-button nav-btn active">📚 指令百科</button>
                         <button data-view="ids" class="mc-button nav-btn">🆔 万能 ID 库</button>
                     </div>
@@ -137,7 +134,7 @@
                     <div class="space-y-6">
                         <div>
                             <label class="text-[10px] text-gray-500 block mb-2 uppercase font-black tracking-[0.2em]">游戏平台</label>
-                            <div id="edition-buttons" class="grid grid-cols-2 gap-2">
+                            <div id="edition-buttons-container" class="grid grid-cols-2 gap-2">
                                 <button data-edition="Java" class="mc-button edition-btn active">Java</button>
                                 <button data-edition="Bedrock" class="mc-button edition-btn">Bedrock</button>
                                 <button data-edition="Education" class="mc-button edition-btn">Education</button>
@@ -145,9 +142,8 @@
                             </div>
                         </div>
 
-                        <!-- Dynamic Control Section -->
                         <div id="category-controls">
-                            <!-- Wiki categories or ID versions will go here -->
+                            <!-- 动态加载分类按钮 -->
                         </div>
                     </div>
                 </section>
@@ -156,21 +152,17 @@
                     <h3 class="mc-font text-2xl text-blue-400 mb-4 flex items-center gap-2">AI 专家问答</h3>
                     <div class="relative group">
                         <textarea id="ai-input" class="w-full bg-black/80 border-2 border-gray-700 p-3 text-white h-32 text-xs mb-3 outline-none focus:border-blue-500 rounded transition-all" placeholder="例如：如何用指令生成一个骑着猪的僵尸？"></textarea>
-                        <div class="absolute top-2 right-2 opacity-20 group-hover:opacity-100 transition-opacity">
-                            <span class="text-[10px] bg-blue-600 px-1 rounded text-white">Gemini 3.0</span>
-                        </div>
                     </div>
                     <button id="ask-ai-btn" class="mc-button" style="justify-content: center;">提交问题</button>
                     <div id="ai-response-container" class="hidden mt-4 p-4 bg-black/60 border border-blue-900/50 rounded-lg text-xs leading-relaxed text-blue-100 font-mono overflow-y-auto max-h-64 custom-scrollbar whitespace-pre-wrap shadow-inner"></div>
                 </section>
             </aside>
 
-            <!-- Main Content -->
             <main class="lg:col-span-9 space-y-6">
                 <div class="mc-panel p-4 flex items-center gap-4 bg-black/20">
                     <div class="flex-1 relative">
                         <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">🔍</span>
-                        <input id="search-input" type="text" placeholder="搜索指令 (如: tp, give, execute)..." class="w-full bg-black/60 border-2 border-gray-800 py-3 pl-10 pr-4 text-white rounded-md focus:border-green-600 outline-none transition-colors">
+                        <input id="search-input" type="text" placeholder="全局搜索指令、物品或 ID..." class="w-full bg-black/60 border-2 border-gray-800 py-3 pl-10 pr-4 text-white rounded-md focus:border-green-600 outline-none transition-colors">
                     </div>
                 </div>
 
@@ -179,18 +171,18 @@
                     <div id="loading-spinner" class="hidden text-xs text-blue-500 animate-pulse font-bold">同步中...</div>
                 </div>
 
-                <div id="error-message" class="hidden p-4 bg-red-900/20 border-2 border-red-900 text-red-400 rounded-lg text-xs items-center gap-3"></div>
+                <div id="error-message" class="hidden p-4 bg-red-900/20 border-2 border-red-900 text-red-400 rounded-lg text-xs"></div>
 
-                <div id="main-grid" class="space-y-4">
-                    <!-- Cards will be injected here -->
+                <div id="main-grid" class="space-y-4 min-h-[400px]">
+                    <!-- 动态内容渲染区 -->
                 </div>
             </main>
         </div>
 
         <footer class="max-w-7xl mx-auto mt-20 pt-10 border-t border-gray-800 pb-16 text-center">
-            <div class="mc-font text-3xl text-gray-600 mb-2">MC COMMAND MASTER v2.0</div>
+            <div class="mc-font text-3xl text-gray-600 mb-2">MC COMMAND MASTER v2.1</div>
             <p class="text-xs text-gray-700 uppercase tracking-[0.4em] font-black">
-                Powered by Gemini 3.0 & Vanilla JS
+                Static Optimized & Powered by Gemini 3.0
             </p>
         </footer>
     </div>
